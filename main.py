@@ -2,7 +2,6 @@ import serial
 import serial.tools.list_ports
 import time
 import numpy as np
-import os
 from pprint import pprint
 
 
