@@ -3,25 +3,55 @@ import serial.tools.list_ports
 import time
 import numpy as np
 import matplotlib.pyplot as plt
+import json
+from datetime import datetime
+import os
 from mpl_toolkits.mplot3d import Axes3D
+
+PLOT_RANGE_IN_CM = 500
+CLI_BAUD = 115200
+DATA_BAUD = 921600
 
 
 class Radar:
-    def __init__(self, cli_baud_rate=115200, data_baud_rate=921600):
-        port = self.read_com_port()
-        self._cli = serial.Serial(port["CliPort"], cli_baud_rate)
-        self._data = serial.Serial(port["DataPort"], data_baud_rate)
+    def __init__(self, config_file_name):
+        """
+
+        :param cli_baud_rate (int): baud rate of the control port
+        :param data_baud_rate(int): baud rate of the data port
+        """
+        # buffer-ish variable
         self._config = list()
         self._config_parameter = dict()
+        self.length_list = list()
+        self.xs = list()
+        self.ys = list()
+        self.zs = list()
 
-    def send_config(self):
-        self._config = open("./radar_config/1443_30fps_5m.cfg").readlines()
+        # uart things variable
+        port = self.read_com_port()
+        self._cli = serial.Serial(port["CliPort"], CLI_BAUD)
+        self._data = serial.Serial(port["DataPort"], DATA_BAUD)
+        self._send_config(config_file_name)
+        self._parse_config()
+
+        # plotting variable
+        self.fig = plt.figure()
+        self.ax = self.fig.add_subplot(111, projection='3d')
+
+        # logging things
+        self._wrote_flag = True
+        self._file_name = datetime.today().strftime("%Y-%m-%d-%H%M")
+        self._writer = open(f"./output_file/{self._file_name}.json", 'a', encoding="UTF-8")
+
+    def _send_config(self, config_file_name):
+        self._config = open(f"./radar_config/{config_file_name}").readlines()
         for command in self._config:
             print(command)
             self._cli.write((command + '\n').encode())
             time.sleep(0.01)
 
-    def parse_config(self):
+    def _parse_config(self):
         num_rx = 4
         num_tx = 3
         for line in self._config:
@@ -169,15 +199,15 @@ class Radar:
 
                         detected_object.update(
                             {
-                                "NumObj": tlv_num_obj,
-                                "RangeIndex": range_index,
-                                "Range": range_value,
-                                "DopplerIndex": doppler_index,
-                                "Doppler": doppler_value,
-                                "PeakValue": peak_value,
-                                "x": x,
-                                "y": y,
-                                "z": z
+                                "NumObj": tlv_num_obj.tolist(),
+                                "RangeIndex": range_index.tolist(),
+                                "Range": range_value.tolist(),
+                                "DopplerIndex": doppler_index.tolist(),
+                                "Doppler": doppler_value.tolist(),
+                                "PeakValue": peak_value.tolist(),
+                                "x": x.tolist(),
+                                "y": y.tolist(),
+                                "z": z.tolist()
                             }
                         )
                         data_ok = 1
@@ -195,6 +225,8 @@ class Radar:
         return data_ok, frame_number, detected_object
 
     def close_connection(self):
+        self._writer.write("]")
+        self._writer.close()
         self._cli.write("sensorStop\n".encode())
         time.sleep(0.5)
         self._cli.close()
@@ -219,45 +251,49 @@ class Radar:
                 "CliPort": cli_port
             }
 
+    def plot_3d_scatter(self, detected_object):
+        if len(self.length_list) >= 10:  # delay x * 0.04 s
+            self.xs = self.xs[self.length_list[0]:]
+            self.ys = self.ys[self.length_list[0]:]
+            self.zs = self.zs[self.length_list[0]:]
+            self.length_list.pop(0)
+        self.ax.cla()
+        self.length_list.append(len(detected_object["x"]))
+        self.xs += list(detected_object["x"])
+        self.ys += list(detected_object["y"])
+        self.zs += list(detected_object["z"])
+        self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
+        self.ax.set_xlabel('X(cm)')
+        self.ax.set_ylabel('range (cm)')
+        self.ax.set_zlabel('elevation (cm)')
+        self.ax.set_xlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
+        self.ax.set_ylim(0, PLOT_RANGE_IN_CM)
+        self.ax.set_zlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
+        plt.draw()
+        plt.pause(1 / 30)
+
+    def write_to_json(self, detected_object):
+        new_line = json.dumps(detected_object)
+        if self._wrote_flag:
+            self._writer.write(f"[[{new_line}]")
+            self._wrote_flag = False
+        else:
+            self._writer.write(f",\n[{new_line}]")
+
 
 if __name__ == '__main__':
-    length_list = list()
-    Xs = list()
-    Ys = list()
-    Zs = list()
-    radar = Radar()
-    radar.send_config()
-    radar.parse_config()
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
+    radar = Radar("1443_30fps_5m_0.049res.cfg")
     while True:
         try:
             dataOK, frameNumber, detObj = radar.parse_data()
             if dataOK:
-                if len(length_list) >= 10:  # delay x * 0.04 s
-                    count = 0
-                    Xs = Xs[length_list[0]:]
-                    Ys = Ys[length_list[0]:]
-                    Zs = Zs[length_list[0]:]
-                    length_list.pop(0)
-                ax.cla()
-                length_list.append(len(detObj["x"]))
-                Xs += list(detObj["x"])
-                Ys += list(detObj["y"])
-                Zs += list(detObj["z"])
-                ax.scatter(Xs, Ys, Zs, c='r', marker='o', label="Radar Data")
-                ax.set_xlabel('X(cm)')
-                ax.set_ylabel('range (cm)')
-                ax.set_zlabel('elevation (cm)')
-                ax.set_xlim(-500, 500)
-                ax.set_ylim(0, 500)
-                ax.set_zlim(-500, 500)
-                plt.draw()
-                plt.pause(0.04)
-
-            # time.sleep(0.02)
+                # radar.plot_3d_scatter(detObj)
+                radar.write_to_json(detObj)
+            # let radar rest or whatever
+            time.sleep(1/30)
 
         except KeyboardInterrupt or serial.SerialException:
+            # if ^C pressed
             radar.close_connection()
             print("\nPeace")
             break
