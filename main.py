@@ -2,7 +2,8 @@ import serial
 import serial.tools.list_ports
 import time
 import numpy as np
-from pprint import pprint
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 
 class Radar:
@@ -14,7 +15,7 @@ class Radar:
         self._config_parameter = dict()
 
     def send_config(self):
-        self._config = open("./radar_config/1443_25fps_5m.cfg").readlines()
+        self._config = open("./radar_config/1443_30fps_5m.cfg").readlines()
         for command in self._config:
             print(command)
             self._cli.write((command + '\n').encode())
@@ -42,7 +43,7 @@ class Radar:
                 chirp_end_index = int(split_word[2])
                 loop_count = int(split_word[3])
                 frame_count = int(split_word[4])
-                frame_periodicity = int(split_word[5])
+                frame_periodicity = int(float(split_word[5]))
 
         chirps_per_frame = (chirp_end_index - chirp_start_index + 1) * loop_count
 
@@ -90,7 +91,7 @@ class Radar:
             start_index = list()
             for loc in possible_location:
                 check = byte_vector[loc:loc+8]
-                if np.all(check == magic_word):
+                if np.array_equal(check, magic_word):
                     start_index.append(loc)
 
             if start_index:
@@ -220,18 +221,41 @@ class Radar:
 
 
 if __name__ == '__main__':
+    length_list = list()
+    Xs = list()
+    Ys = list()
+    Zs = list()
     radar = Radar()
     radar.send_config()
     radar.parse_config()
-    count = 0
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
     while True:
         try:
             dataOK, frameNumber, detObj = radar.parse_data()
             if dataOK:
-                # TODO add shit here
-                pprint(detObj)
+                if len(length_list) >= 10:  # delay x * 0.04 s
+                    count = 0
+                    Xs = Xs[length_list[0]:]
+                    Ys = Ys[length_list[0]:]
+                    Zs = Zs[length_list[0]:]
+                    length_list.pop(0)
+                ax.cla()
+                length_list.append(len(detObj["x"]))
+                Xs += list(detObj["x"])
+                Ys += list(detObj["y"])
+                Zs += list(detObj["z"])
+                ax.scatter(Xs, Ys, Zs, c='r', marker='o', label="Radar Data")
+                ax.set_xlabel('X(cm)')
+                ax.set_ylabel('range (cm)')
+                ax.set_zlabel('elevation (cm)')
+                ax.set_xlim(-500, 500)
+                ax.set_ylim(0, 500)
+                ax.set_zlim(-500, 500)
+                plt.draw()
+                plt.pause(0.04)
 
-            time.sleep(1/25)
+            # time.sleep(0.02)
 
         except KeyboardInterrupt or serial.SerialException:
             radar.close_connection()
