@@ -237,26 +237,19 @@ class Radar:
                 "CliPort": cli_port
             }
 
-    def plot_3d_scatter(self, detected_object):
-        if len(self.length_list) >= 10:  # delay x * 0.04 s
+    def plot_3d_scatter(self, detected_object, remove_static=True):
+        if len(self.length_list) >= 10:  # clear every X*0.04 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
             self.length_list.pop(0)
         self.ax.cla()
-        motion = detected_object["Doppler"]
-        xs = list(detected_object["x"])
-        ys = list(detected_object["y"])
-        zs = list(detected_object["z"])
-        static_index = [i for i in range(len(motion)) if motion[i] == 0]
-        for index in sorted(static_index, reverse=True):
-            del xs[index]
-            del ys[index]
-            del zs[index]
-        self.length_list.append(len(xs))
-        self.xs += xs
-        self.ys += ys
-        self.zs += zs
+        if remove_static:
+            detected_object = self.remove_static(detected_object)
+        self.length_list.append(detected_object["NumObj"])
+        self.xs += detected_object["x"]
+        self.ys += detected_object["y"]
+        self.zs += detected_object["z"]
         self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
         self.ax.set_xlabel('azimuth (cm)')
         self.ax.set_ylabel('range (cm)')
@@ -267,7 +260,41 @@ class Radar:
         plt.draw()
         plt.pause(1 / 30)
 
-    def write_to_json(self, detected_object):
+    @staticmethod
+    def remove_static(detected_object):
+        motion = detected_object["Doppler"]
+        range_index = list(detected_object["RangeIndex"])
+        range_value = list(detected_object["Range"])
+        doppler_index = list(detected_object["DopplerIndex"])
+        peak = list(detected_object["PeakValue"])
+        xs = list(detected_object["x"])
+        ys = list(detected_object["y"])
+        zs = list(detected_object["z"])
+        static_index = [i for i in range(len(motion)) if motion[i] == 0]
+        for index in sorted(static_index, reverse=True):
+            del motion[index]
+            del range_index[index]
+            del range_value[index]
+            del doppler_index[index]
+            del peak[index]
+            del xs[index]
+            del ys[index]
+            del zs[index]
+        return {
+            "NumObj": len(range_index),
+            "RangeIndex": range_index,
+            "Range": range_value,
+            "DopplerIndex": doppler_index,
+            "Doppler": motion,
+            "PeakValue": peak,
+            "x": xs,
+            "y": ys,
+            "z": zs
+        }
+
+    def write_to_json(self, detected_object, remove_static=True):
+        if remove_static:
+            detected_object = self.remove_static(detected_object)
         new_line = json.dumps(detected_object)
         if self._wrote_flag:
             self._writer.write(f"[[{new_line}]")
