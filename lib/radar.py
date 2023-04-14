@@ -172,26 +172,16 @@ class Radar:
                         z = np.zeros(tlv_num_obj, dtype='int16')
 
                         for i in range(tlv_num_obj):
-                            range_index[i] = np.matmul(byte_buffer[index:index + 2], word[:2])
-                            index += 2
-                            doppler_index[i] = np.matmul(byte_buffer[index:index + 2], word[:2])
-                            index += 2
-                            peak_value[i] = np.matmul(byte_buffer[index:index + 2], word[:2])
-                            index += 2
-                            x[i] = np.matmul(byte_buffer[index:index + 2], word[:2])
-                            index += 2
-                            y[i] = np.matmul(byte_buffer[index:index + 2], word[:2])
-                            index += 2
-                            z[i] = np.matmul(byte_buffer[index:index + 2], word[:2])
-                            index += 2
+                            for variable in [range_index, doppler_index, peak_value, x, y, z]:
+                                variable[i] = np.matmul(byte_buffer[index:index + 2], word[:2])
+                                index += 2
 
                         range_value = range_index * self._config_parameter["RangeIndexToMeters"]
                         doppler_index[doppler_index > (self._config_parameter["DopplerBins"]/2-1)] = \
                             doppler_index[doppler_index > (self._config_parameter["DopplerBins"]/2-1)]-65535
                         doppler_value = doppler_index * self._config_parameter["DopplerResolution"]
-                        x = x / tlv_xyz_format
-                        y = y / tlv_xyz_format
-                        z = z / tlv_xyz_format
+
+                        x, y, z = map(lambda item: item/tlv_xyz_format, [x, y, z])
 
                         detected_object.update(
                             {
@@ -254,10 +244,19 @@ class Radar:
             self.zs = self.zs[self.length_list[0]:]
             self.length_list.pop(0)
         self.ax.cla()
-        self.length_list.append(len(detected_object["x"]))
-        self.xs += list(detected_object["x"])
-        self.ys += list(detected_object["y"])
-        self.zs += list(detected_object["z"])
+        motion = detected_object["Doppler"]
+        xs = list(detected_object["x"])
+        ys = list(detected_object["y"])
+        zs = list(detected_object["z"])
+        static_index = [i for i in range(len(motion)) if motion[i] == 0]
+        for index in sorted(static_index, reverse=True):
+            del xs[index]
+            del ys[index]
+            del zs[index]
+        self.length_list.append(len(xs))
+        self.xs += xs
+        self.ys += ys
+        self.zs += zs
         self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
         self.ax.set_xlabel('azimuth (cm)')
         self.ax.set_ylabel('range (cm)')
@@ -275,4 +274,3 @@ class Radar:
             self._wrote_flag = False
         else:
             self._writer.write(f",\n[{new_line}]")
-

@@ -1,5 +1,5 @@
 from lib.radar import Radar
-import serial
+from serial import SerialException
 import time
 
 CLI_BAUD = 115200
@@ -12,12 +12,12 @@ if __name__ == '__main__':
         try:
             dataOK, frameNumber, detObj = radar.parse_data()
             if dataOK:
-                # radar.plot_3d_scatter(detObj)
-                radar.write_to_json(detObj)
+                radar.plot_3d_scatter(detObj)
+                # radar.write_to_json(detObj)
             # let radar rest or whatever
             time.sleep(1/30)
 
-        except KeyboardInterrupt or serial.SerialException:
+        except KeyboardInterrupt or SerialException:
             # if ^C pressed
             radar.close_connection()
             print("\nPeace")
