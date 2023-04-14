@@ -297,7 +297,7 @@ class Radar:
             detected_object = self.remove_static(detected_object)
         new_line = json.dumps(detected_object)
         if self._wrote_flag:
-            self._writer.write(f"[[{new_line}]")
+            self._writer.write(f"[[{time.time()}, {new_line}]")
             self._wrote_flag = False
         else:
-            self._writer.write(f",\n[{new_line}]")
+            self._writer.write(f",\n[{time.time()}, {new_line}]")
