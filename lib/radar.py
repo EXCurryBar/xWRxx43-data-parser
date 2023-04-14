@@ -1,3 +1,5 @@
+import pprint
+
 import serial
 import serial.tools.list_ports
 import time
@@ -244,8 +246,6 @@ class Radar:
             self.zs = self.zs[self.length_list[0]:]
             self.length_list.pop(0)
         self.ax.cla()
-        if remove_static:
-            detected_object = self.remove_static(detected_object)
         self.length_list.append(detected_object["NumObj"])
         self.xs += detected_object["x"]
         self.ys += detected_object["y"]
@@ -292,9 +292,7 @@ class Radar:
             "z": zs
         }
 
-    def write_to_json(self, detected_object, remove_static=True):
-        if remove_static:
-            detected_object = self.remove_static(detected_object)
+    def write_to_json(self, detected_object):
         new_line = json.dumps(detected_object)
         if self._wrote_flag:
             self._writer.write(f"[[{time.time()}, {new_line}]")

@@ -1,3 +1,5 @@
+import pprint
+
 from lib.radar import Radar
 from serial import SerialException
 import time
@@ -12,10 +14,11 @@ if __name__ == '__main__':
         try:
             dataOK, frameNumber, detObj = radar.parse_data()
             if dataOK:
+                detObj = radar.remove_static(detObj)
                 radar.plot_3d_scatter(detObj)
-                # radar.write_to_json(detObj)
+                radar.write_to_json(detObj)
             # let radar rest or whatever
-            time.sleep(1/30)
+            # time.sleep(1/30)
 
         except KeyboardInterrupt or SerialException:
             # if ^C pressed
