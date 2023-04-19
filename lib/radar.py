@@ -239,7 +239,7 @@ class Radar:
                 "CliPort": cli_port
             }
 
-    def plot_3d_scatter(self, detected_object, remove_static=True):
+    def plot_3d_scatter(self, detected_object):
         if len(self.length_list) >= 10:  # clear every X*0.04 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
