@@ -1,5 +1,3 @@
-import pprint
-
 import serial
 import serial.tools.list_ports
 import time
@@ -7,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 from datetime import datetime
-from mpl_toolkits.mplot3d import Axes3D
+
 PLOT_RANGE_IN_CM = 500
 
 
@@ -35,7 +33,8 @@ class Radar:
 
         # plotting variable
         self.fig = plt.figure()
-        self.ax = self.fig.add_subplot(111, projection='3d')
+        self.ax = self.fig.add_subplot(121, projection='3d')
+        self.rp = self.fig.add_subplot(122)
 
         # logging things
         self._wrote_flag = True
@@ -104,6 +103,7 @@ class Radar:
         data_ok = 0
         frame_number = 0
         detected_object = dict()
+        range_bins = list()
 
         read_buffer = self._data.read(self._data.in_waiting)
         byte_vector = np.frombuffer(read_buffer, dtype='uint8')
@@ -201,7 +201,12 @@ class Radar:
                         data_ok = 1
 
                     elif tlv_type == demo_uart_msg_range_profile:
-                        index += tlv_length
+                        num_bytes = self._config_parameter["RangeBins"] * 2
+                        payload = byte_buffer[index:index + num_bytes]
+                        index += num_bytes
+                        range_bins = payload.view(dtype=np.uint16).tolist()
+                        data_ok = 1
+
                 if index > 0 and data_ok == 1:
                     shift_index = index
                     byte_buffer[:byte_buffer_length - shift_index] = byte_buffer[shift_index:byte_buffer_length]
@@ -210,7 +215,7 @@ class Radar:
                     if byte_buffer_length < 0:
                         byte_buffer_length = 0
 
-        return data_ok, frame_number, detected_object
+        return data_ok, frame_number, detected_object, range_bins
 
     def close_connection(self):
         self._writer.write("]")
@@ -261,6 +266,14 @@ class Radar:
         plt.pause(1 / 30)
 
     @staticmethod
+    def plot_range_profile(range_bins):
+        plt.cla()
+        plt.ylim((0, 30000))
+        plt.xlim((0, 127))
+        plt.plot(range_bins)
+        plt.pause(0.0001)
+
+    @staticmethod
     def remove_static(detected_object):
         motion = detected_object["Doppler"]
         range_index = list(detected_object["RangeIndex"])
@@ -292,7 +305,8 @@ class Radar:
             "z": zs
         }
 
-    def write_to_json(self, detected_object):
+    def write_to_json(self, detected_object, range_bins):
+        detected_object.update({"Range_Profile": range_bins})
         new_line = json.dumps(detected_object)
         if self._wrote_flag:
             self._writer.write(f"[[{time.time()}, {new_line}]")
