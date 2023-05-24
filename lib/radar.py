@@ -200,13 +200,6 @@ class Radar:
                         )
                         data_ok = 1
 
-                    elif tlv_type == demo_uart_msg_range_profile:
-                        num_bytes = self._config_parameter["RangeBins"] * 2
-                        payload = byte_buffer[index:index + num_bytes]
-                        index += num_bytes
-                        range_bins = payload.view(dtype=np.uint16).tolist()
-                        data_ok = 1
-
                 if index > 0 and data_ok == 1:
                     shift_index = index
                     byte_buffer[:byte_buffer_length - shift_index] = byte_buffer[shift_index:byte_buffer_length]
@@ -215,7 +208,7 @@ class Radar:
                     if byte_buffer_length < 0:
                         byte_buffer_length = 0
 
-        return data_ok, frame_number, detected_object, range_bins
+        return data_ok, frame_number, detected_object
 
     def close_connection(self):
         self._writer.write("]")
@@ -305,8 +298,7 @@ class Radar:
             "z": zs
         }
 
-    def write_to_json(self, detected_object, range_bins):
-        detected_object.update({"Range_Profile": range_bins})
+    def write_to_json(self, detected_object):
         new_line = json.dumps(detected_object)
         if self._wrote_flag:
             self._writer.write(f"[[{time.time()}, {new_line}]")

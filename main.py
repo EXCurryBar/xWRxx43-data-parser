@@ -10,10 +10,10 @@ if __name__ == '__main__':
     radar = Radar("scatterrange.cfg", CLI_BAUD, DATA_BAUD)
     while True:
         try:
-            dataOK, frameNumber, detObj, range_bin = radar.parse_data()
+            dataOK, frameNumber, detObj = radar.parse_data()
             if dataOK:
                 detObj = radar.remove_static(detObj)
-                radar.write_to_json(detObj, range_bin)
+                radar.write_to_json(detObj)
 
         except KeyboardInterrupt or SerialException:
             # if ^C pressed
