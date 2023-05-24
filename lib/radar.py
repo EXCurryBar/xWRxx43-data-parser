@@ -19,10 +19,6 @@ class Radar:
         # buffer-ish variable
         self._config = list()
         self._config_parameter = dict()
-        self.length_list = list()
-        self.xs = list()
-        self.ys = list()
-        self.zs = list()
 
         # uart things variable
         port = self._read_com_port()
@@ -30,11 +26,6 @@ class Radar:
         self._data = serial.Serial(port["DataPort"], data_baud_rate)
         self._send_config(config_file_name)
         self._parse_config()
-
-        # plotting variable
-        self.fig = plt.figure()
-        self.ax = self.fig.add_subplot(121, projection='3d')
-        self.rp = self.fig.add_subplot(122)
 
         # logging things
         self._wrote_flag = True
@@ -92,9 +83,6 @@ class Radar:
         byte_buffer = np.zeros(2**15, dtype='uint8')
         byte_buffer_length = 0
 
-        object_struct_size = 12
-        byte_vector_acc_max_size = 2**15
-        demo_uart_msg_detected_points = 1
         demo_uart_msg_range_profile = 2
         demo_uart_msg_azimuth_static_heat_map = 4
         max_buffer_size = 2**15
@@ -103,8 +91,8 @@ class Radar:
         magic_ok = 0
         data_ok = 0
         frame_number = 0
-        detected_object = dict()
         range_bins = list()
+        QQ = list()
 
         read_buffer = self._data.read(self._data.in_waiting)
         byte_vector = np.frombuffer(read_buffer, dtype='uint8')
@@ -161,47 +149,7 @@ class Radar:
                     index += 4
                     tlv_length = np.matmul(byte_buffer[index:index+4], word)
                     index += 4
-                    if tlv_type == demo_uart_msg_detected_points:
-                        tlv_num_obj = np.matmul(byte_buffer[index:index+2], word[:2])
-                        index += 2
-                        tlv_xyz_format = np.matmul(byte_buffer[index:index+2], word[:2])
-                        index += 2
-
-                        range_index = np.zeros(tlv_num_obj, dtype='int16')
-                        doppler_index = np.zeros(tlv_num_obj, dtype='int16')
-                        peak_value = np.zeros(tlv_num_obj, dtype='int16')
-                        x = np.zeros(tlv_num_obj, dtype='int16')
-                        y = np.zeros(tlv_num_obj, dtype='int16')
-                        z = np.zeros(tlv_num_obj, dtype='int16')
-
-                        for i in range(tlv_num_obj):
-                            for variable in [range_index, doppler_index, peak_value, x, y, z]:
-                                variable[i] = np.matmul(byte_buffer[index:index + 2], word[:2])
-                                index += 2
-
-                        range_value = range_index * self._config_parameter["RangeIndexToMeters"]
-                        doppler_index[doppler_index > (self._config_parameter["DopplerBins"]/2-1)] = \
-                            doppler_index[doppler_index > (self._config_parameter["DopplerBins"]/2-1)]-65535
-                        doppler_value = doppler_index * self._config_parameter["DopplerResolution"]
-
-                        x, y, z = map(lambda item: item/tlv_xyz_format, [x, y, z])
-
-                        detected_object.update(
-                            {
-                                "NumObj": tlv_num_obj.tolist(),
-                                "RangeIndex": range_index.tolist(),
-                                "Range": range_value.tolist(),
-                                "DopplerIndex": doppler_index.tolist(),
-                                "Doppler": doppler_value.tolist(),
-                                "PeakValue": peak_value.tolist(),
-                                "x": x.tolist(),
-                                "y": y.tolist(),
-                                "z": z.tolist()
-                            }
-                        )
-                        data_ok = 1
-
-                    elif tlv_type == demo_uart_msg_range_profile:
+                    if tlv_type == demo_uart_msg_range_profile:
                         num_bytes = self._config_parameter["RangeBins"] * 2
                         payload = byte_buffer[index:index + num_bytes]
                         index += num_bytes
@@ -212,15 +160,18 @@ class Radar:
                         num_bytes = 32 * self._config_parameter["RangeBins"]
                         q = byte_buffer[index:index + num_bytes]
                         index += num_bytes
-                        q = q[::2] + q[1::2] * 256
+                        q = q[::2] + q[1::2] * 2**8
                         q[q > 32767] -= 65536
                         q = q[::2] + 1j * q[1::2]
+                        q = q.reshape(8, self._config_parameter["RangeBins"])
                         Q = np.fft.fft(q, 64)
                         QQ = np.fft.fftshift(np.abs(Q), 1)
                         QQ = QQ.T
 
                         QQ = QQ[:, 2:]
                         QQ = QQ[::-1]
+
+                        data_ok = 1
 
                 if index > 0 and data_ok == 1:
                     shift_index = index
@@ -230,7 +181,7 @@ class Radar:
                     if byte_buffer_length < 0:
                         byte_buffer_length = 0
 
-        return data_ok, frame_number, detected_object, range_bins
+        return data_ok, frame_number, range_bins, QQ
 
     def close_connection(self):
         self._writer.write("]")
@@ -259,27 +210,6 @@ class Radar:
                 "CliPort": cli_port
             }
 
-    def plot_3d_scatter(self, detected_object):
-        if len(self.length_list) >= 10:  # clear every X*0.04 s
-            self.xs = self.xs[self.length_list[0]:]
-            self.ys = self.ys[self.length_list[0]:]
-            self.zs = self.zs[self.length_list[0]:]
-            self.length_list.pop(0)
-        self.ax.cla()
-        self.length_list.append(detected_object["NumObj"])
-        self.xs += detected_object["x"]
-        self.ys += detected_object["y"]
-        self.zs += detected_object["z"]
-        self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
-        self.ax.set_xlabel('azimuth (cm)')
-        self.ax.set_ylabel('range (cm)')
-        self.ax.set_zlabel('elevation (cm)')
-        self.ax.set_xlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
-        self.ax.set_ylim(0, PLOT_RANGE_IN_CM)
-        self.ax.set_zlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
-        plt.draw()
-        plt.pause(1 / 30)
-
     @staticmethod
     def plot_range_profile(range_bins):
         plt.cla()
@@ -288,41 +218,8 @@ class Radar:
         plt.plot(range_bins)
         plt.pause(0.0001)
 
-    @staticmethod
-    def remove_static(detected_object):
-        motion = detected_object["Doppler"]
-        range_index = list(detected_object["RangeIndex"])
-        range_value = list(detected_object["Range"])
-        doppler_index = list(detected_object["DopplerIndex"])
-        peak = list(detected_object["PeakValue"])
-        xs = list(detected_object["x"])
-        ys = list(detected_object["y"])
-        zs = list(detected_object["z"])
-        static_index = [i for i in range(len(motion)) if motion[i] == 0]
-        for index in sorted(static_index, reverse=True):
-            del motion[index]
-            del range_index[index]
-            del range_value[index]
-            del doppler_index[index]
-            del peak[index]
-            del xs[index]
-            del ys[index]
-            del zs[index]
-        return {
-            "NumObj": len(range_index),
-            "RangeIndex": range_index,
-            "Range": range_value,
-            "DopplerIndex": doppler_index,
-            "Doppler": motion,
-            "PeakValue": peak,
-            "x": xs,
-            "y": ys,
-            "z": zs
-        }
-
-    def write_to_json(self, detected_object, range_bins):
-        detected_object.update({"Range_Profile": range_bins})
-        new_line = json.dumps(detected_object)
+    def write_to_json(self, range_bins):
+        new_line = json.dumps({"range_profile": range_bins})
         if self._wrote_flag:
             self._writer.write(f"[[{time.time()}, {new_line}]")
             self._wrote_flag = False
