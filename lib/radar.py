@@ -96,6 +96,7 @@ class Radar:
         byte_vector_acc_max_size = 2**15
         demo_uart_msg_detected_points = 1
         demo_uart_msg_range_profile = 2
+        demo_uart_msg_azimuth_static_heat_map = 4
         max_buffer_size = 2**15
         magic_word = [2, 1, 4, 3, 6, 5, 8, 7]
 
@@ -206,6 +207,20 @@ class Radar:
                         index += num_bytes
                         range_bins = payload.view(dtype=np.uint16).tolist()
                         data_ok = 1
+
+                    elif tlv_type == demo_uart_msg_azimuth_static_heat_map:
+                        num_bytes = 32 * self._config_parameter["RangeBins"]
+                        q = byte_buffer[index:index + num_bytes]
+                        index += num_bytes
+                        q = q[::2] + q[1::2] * 256
+                        q[q > 32767] -= 65536
+                        q = q[::2] + 1j * q[1::2]
+                        Q = np.fft.fft(q, 64)
+                        QQ = np.fft.fftshift(np.abs(Q), 1)
+                        QQ = QQ.T
+
+                        QQ = QQ[:, 2:]
+                        QQ = QQ[::-1]
 
                 if index > 0 and data_ok == 1:
                     shift_index = index
