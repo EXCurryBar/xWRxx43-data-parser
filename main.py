@@ -1,3 +1,5 @@
+import pprint
+
 from lib.radar import Radar
 from serial import SerialException
 import matplotlib.pyplot as plt
@@ -7,13 +9,14 @@ DATA_BAUD = 921600
 
 
 if __name__ == '__main__':
-    radar = Radar("scatterrange.cfg", CLI_BAUD, DATA_BAUD)
+    radar = Radar("rangedoppler.cfg", CLI_BAUD, DATA_BAUD)
     while True:
         try:
-            dataOK, frameNumber, detObj = radar.parse_data()
+            dataOK, frameNumber, range_doppler = radar.parse_data()
             if dataOK:
-                detObj = radar.remove_static(detObj)
-                radar.write_to_json(detObj)
+                pprint.pprint(range_doppler)
+                # detObj = radar.remove_static(detObj)
+                # radar.write_to_json(detObj)
 
         except KeyboardInterrupt or SerialException:
             # if ^C pressed
