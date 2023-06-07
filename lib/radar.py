@@ -1,5 +1,5 @@
 import pprint
-
+import sys
 import serial
 import serial.tools.list_ports
 import time
@@ -179,11 +179,11 @@ class Radar:
                 index += 4
                 tlvs = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
-                print("frame_number:" + str(frame_number))
+                # print("frame_number:" + str(frame_number))
 
                 for _ in range(tlvs):
                     tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
-                    print("tlvs:" + str(tlv_type))
+                    # print("tlvs:" + str(tlv_type))
                     index += 4
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
@@ -307,20 +307,26 @@ class Radar:
     def _read_com_port(self):
         data_port = ""
         cli_port = ""
-        ports = serial.tools.list_ports.comports(include_links=False)
-        for port in ports:
-            if "XDS110 Class Auxiliary Data Port" in port.description:
-                data_port = port.name
-            elif "XDS110 Class Application/User" in port.description:
-                cli_port = port.name
+        if sys.platform == "win32" or sys.platform == "cygwin":
+            ports = serial.tools.list_ports.comports(include_links=False)
+            for port in ports:
+                if "XDS110 Class Auxiliary Data Port" in port.description:
+                    data_port = port.name
+                elif "XDS110 Class Application/User" in port.description:
+                    cli_port = port.name
 
-        if not data_port or not cli_port:
-            input("please connect the radar and press Enter...")
-            return self._read_com_port()
-        else:
+            if not data_port or not cli_port:
+                input("please connect the radar and press Enter...")
+                return self._read_com_port()
+            else:
+                return {
+                    "DataPort": data_port,
+                    "CliPort": cli_port
+                }
+        elif sys.platform == "linux":
             return {
-                "DataPort": data_port,
-                "CliPort": cli_port
+                "DataPort": "/dev/ttyACM1",
+                "CliPort": "/dev/ttyACM0"
             }
 
     def plot_3d_scatter(self, detected_object):

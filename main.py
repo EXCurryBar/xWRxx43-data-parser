@@ -1,5 +1,6 @@
 import pprint
 import time
+import traceback
 
 from lib.radar import Radar
 from serial import SerialException
@@ -27,5 +28,6 @@ if __name__ == '__main__':
 
         except Exception as e:
             radar.close_connection()
-            print(f"\nShit code: {e}")
+            print(f"\nShit code: {e} - ", end='')
+            traceback.print_exc()
             break
