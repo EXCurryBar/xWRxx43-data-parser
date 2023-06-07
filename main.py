@@ -1,4 +1,5 @@
 import pprint
+import time
 
 from lib.radar import Radar
 from serial import SerialException
@@ -9,12 +10,13 @@ DATA_BAUD = 921600
 
 
 if __name__ == '__main__':
-    radar = Radar("rangedoppler.cfg", CLI_BAUD, DATA_BAUD)
+    radar = Radar("profile.cfg", CLI_BAUD, DATA_BAUD)
     while True:
         try:
             dataOK, frameNumber, range_doppler = radar.parse_data()
             if dataOK:
                 pprint.pprint(range_doppler)
+                time.sleep(1/4)
                 # detObj = radar.remove_static(detObj)
                 # radar.write_to_json(detObj)
 

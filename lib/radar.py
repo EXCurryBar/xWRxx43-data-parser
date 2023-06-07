@@ -20,6 +20,7 @@ class Radar:
         self._config = list()
         self._config_parameter = dict()
         self.length_list = list()
+        self.byte_buffer_length = 0
         self.xs = list()
         self.ys = list()
         self.zs = list()
@@ -90,7 +91,7 @@ class Radar:
     def parse_data(self):
         word = [1, 2 ** 8, 2 ** 16, 2 ** 24]
         byte_buffer = np.zeros(2**15, dtype='uint8')
-        byte_buffer_length = 0
+        self.byte_buffer_length = 0
 
         object_struct_size = 12
         byte_vector_acc_max_size = 2**15
@@ -110,11 +111,11 @@ class Radar:
         byte_vector = np.frombuffer(read_buffer, dtype='uint8')
         byte_count = len(byte_vector)
 
-        if (byte_buffer_length + byte_count) < max_buffer_size:
-            byte_buffer[byte_buffer_length:byte_buffer_length+byte_count] = byte_vector[:byte_count]
-            byte_buffer_length += byte_count
+        if (self.byte_buffer_length + byte_count) < max_buffer_size:
+            byte_buffer[self.byte_buffer_length:self.byte_buffer_length+byte_count] = byte_vector[:byte_count]
+            self.byte_buffer_length += byte_count
 
-        if byte_buffer_length > 16:
+        if self.byte_buffer_length > 16:
             possible_location = np.where(byte_vector == magic_word[0])[0]
 
             start_index = list()
@@ -124,18 +125,17 @@ class Radar:
                     start_index.append(loc)
 
             if start_index:
-                if 0 < start_index[0] < byte_buffer_length:
-                    byte_buffer[:byte_buffer_length-start_index[0]] = byte_buffer[start_index[0]:byte_buffer_length]
-                    byte_buffer[byte_buffer_length-start_index[0]:] = \
-                        np.zeros(len(byte_buffer[byte_buffer_length-start_index[0]:]), dtype='uint8')
-                    byte_buffer_length -= start_index[0]
+                if 0 < start_index[0] < self.byte_buffer_length:
+                    byte_buffer[:self.byte_buffer_length-start_index[0]] = byte_buffer[start_index[0]:self.byte_buffer_length]
+                    byte_buffer[self.byte_buffer_length-start_index[0]:] = \
+                        np.zeros(len(byte_buffer[self.byte_buffer_length-start_index[0]:]), dtype='uint8')
+                    self.byte_buffer_length -= start_index[0]
 
-                if byte_buffer_length < 0:
-                    byte_buffer_length = 0
+                if self.byte_buffer_length < 0:
+                    self.byte_buffer_length = 0
 
                 total_packet_length = np.matmul(byte_buffer[12:12+4], word)
-
-                if (byte_buffer_length >= total_packet_length) and (byte_buffer_length != 0):
+                if (self.byte_buffer_length >= total_packet_length) and (self.byte_buffer_length != 0):
                     magic_ok = 1
                 else:
                     print("magic not ok")
@@ -159,10 +159,8 @@ class Radar:
                 index += 4
                 tlvs = np.matmul(byte_buffer[index:index+4], word)
                 index += 4
-
                 for _ in range(tlvs):
                     tlv_type = np.matmul(byte_buffer[index:index+4], word)
-                    print(f"tlv_type: {tlv_type}")
                     index += 4
                     tlv_length = np.matmul(byte_buffer[index:index+4], word)
                     index += 4
@@ -253,11 +251,11 @@ class Radar:
 
                 if index > 0 and data_ok == 1:
                     shift_index = index
-                    byte_buffer[:byte_buffer_length - shift_index] = byte_buffer[shift_index:byte_buffer_length]
-                    byte_buffer_length -= shift_index
+                    byte_buffer[:self.byte_buffer_length - shift_index] = byte_buffer[shift_index:self.byte_buffer_length]
+                    self.byte_buffer_length -= shift_index
 
-                    if byte_buffer_length < 0:
-                        byte_buffer_length = 0
+                    if self.byte_buffer_length < 0:
+                        self.byte_buffer_length = 0
 
         return data_ok, frame_number, range_doppler_data
 
