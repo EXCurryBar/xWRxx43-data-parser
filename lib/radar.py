@@ -1,3 +1,5 @@
+import pprint
+
 import serial
 import serial.tools.list_ports
 import time
@@ -20,7 +22,6 @@ class Radar:
         self._config = list()
         self._config_parameter = dict()
         self.length_list = list()
-        self.byte_buffer_length = 0
         self.xs = list()
         self.ys = list()
         self.zs = list()
@@ -33,14 +34,21 @@ class Radar:
         self._parse_config()
 
         # plotting variable
-        self.fig = plt.figure()
-        self.ax = self.fig.add_subplot(121, projection='3d')
-        self.rp = self.fig.add_subplot(122)
-
+        # self.fig = plt.figure()
+        # self.ax = self.fig.add_subplot(111, projection='3d')
+        self.fig = plt.figure(figsize=(6, 6))
+        self.ax = plt.subplot(1, 1, 1)  # rows, cols, idx
         # logging things
         self._wrote_flag = True
         self._file_name = datetime.today().strftime("%Y-%m-%d-%H%M")
         self._writer = open(f"./output_file/{self._file_name}.json", 'a', encoding="UTF-8")
+
+        # 這個可以更大
+        # self.max_buffer_size = 2**10 # 1k
+        # self.max_buffer_size = 2**20 # 1M
+        self.max_buffer_size = 2 ** 15
+        self.byte_buffer = np.zeros(self.max_buffer_size, dtype='uint8')
+        self.byte_buffer_length = 0
 
     def _send_config(self, config_file_name):
         self._config = open(f"./radar_config/{config_file_name}").readlines()
@@ -77,28 +85,29 @@ class Radar:
 
         self._config_parameter.update(
             {
-                "DopplerBins": int(chirps_per_frame/num_tx),
+                "DopplerBins": int(chirps_per_frame / num_tx),
                 "RangeBins": int(adc_samples_next),
-                "RangeResolution": (3e8*sample_rate*1e3)/(2*frequency_slope_const*1e12*adc_samples),
-                "RangeIndexToMeters": (3e8*sample_rate*1e3)/(2*frequency_slope_const*1e12*int(adc_samples_next)),
+                "RangeResolution": (3e8 * sample_rate * 1e3) / (2 * frequency_slope_const * 1e12 * adc_samples),
+                "RangeIndexToMeters": (3e8 * sample_rate * 1e3) / (
+                            2 * frequency_slope_const * 1e12 * int(adc_samples_next)),
                 "DopplerResolution":
-                    3e8/(2*start_frequency*1e9*(idle_time+ramp_end_time)*1e6*int(chirps_per_frame/num_tx)),
-                "MaxRange": (300*0.9*sample_rate)/(2*frequency_slope_const*1e3),
-                "MaxVelocity": 3e8/(4*start_frequency*1e9*(idle_time+ramp_end_time)*1e6*num_tx)
+                    3e8 / (2 * start_frequency * 1e9 * (idle_time + ramp_end_time) * 1e6 * int(
+                        chirps_per_frame / num_tx)),
+                "MaxRange": (300 * 0.9 * sample_rate) / (2 * frequency_slope_const * 1e3),
+                "MaxVelocity": 3e8 / (4 * start_frequency * 1e9 * (idle_time + ramp_end_time) * 1e6 * num_tx)
             }
         )
 
     def parse_data(self):
+        # header.version
         word = [1, 2 ** 8, 2 ** 16, 2 ** 24]
-        byte_buffer = np.zeros(2**15, dtype='uint8')
-        self.byte_buffer_length = 0
 
         object_struct_size = 12
-        byte_vector_acc_max_size = 2**15
+        byte_vector_acc_max_size = 2 ** 15
         demo_uart_msg_detected_points = 1
         demo_uart_msg_range_profile = 2
-        demo_uart_msg_range_doppler_heatmap = 5
-        max_buffer_size = 2**15
+        demo_uart_msg_azimuth_static_heat_map = 4
+        demo_uart_msg_range_doppler = 5
         magic_word = [2, 1, 4, 3, 6, 5, 8, 7]
 
         magic_ok = 0
@@ -106,68 +115,83 @@ class Radar:
         frame_number = 0
         detected_object = dict()
         range_doppler_data = dict()
+        range_profile = list()
 
+        # 讀資料
         read_buffer = self._data.read(self._data.in_waiting)
         byte_vector = np.frombuffer(read_buffer, dtype='uint8')
         byte_count = len(byte_vector)
+        # print("byte_buffer_length:"+str(self.byte_buffer_length))
 
-        if (self.byte_buffer_length + byte_count) < max_buffer_size:
-            byte_buffer[self.byte_buffer_length:self.byte_buffer_length+byte_count] = byte_vector[:byte_count]
+        if (self.byte_buffer_length + byte_count) < self.max_buffer_size:
+            # 確認讀進來的資料比buffer小
+            self.byte_buffer[self.byte_buffer_length:self.byte_buffer_length + byte_count] = byte_vector[:byte_count]
             self.byte_buffer_length += byte_count
+        else:
+            # TODO error handle
+            pass
 
         if self.byte_buffer_length > 16:
-            possible_location = np.where(byte_vector == magic_word[0])[0]
+            # possible_location = np.where(byte_vector == magic_word[0])[0]
+            possible_location = np.where(self.byte_buffer == magic_word[0])[0]
 
             start_index = list()
             for loc in possible_location:
-                check = byte_vector[loc:loc+8]
+                # check = byte_vector[loc:loc+8]
+                check = self.byte_buffer[loc:loc + 8]
                 if np.array_equal(check, magic_word):
                     start_index.append(loc)
 
             if start_index:
-                if 0 < start_index[0] < self.byte_buffer_length:
-                    byte_buffer[:self.byte_buffer_length-start_index[0]] = byte_buffer[start_index[0]:self.byte_buffer_length]
-                    byte_buffer[self.byte_buffer_length-start_index[0]:] = \
-                        np.zeros(len(byte_buffer[self.byte_buffer_length-start_index[0]:]), dtype='uint8')
+                # print("start_index[0]:"+str(start_index[0]))
+                if start_index[0] > 0:
+                    self.byte_buffer[:self.byte_buffer_length - start_index[0]] = \
+                        self.byte_buffer[start_index[0]:self.byte_buffer_length]
                     self.byte_buffer_length -= start_index[0]
+                    start_index[0] = 0
 
                 if self.byte_buffer_length < 0:
                     self.byte_buffer_length = 0
 
-                total_packet_length = np.matmul(byte_buffer[12:12+4], word)
+                total_packet_length = np.matmul(self.byte_buffer[12:12 + 4], word)
+                # print("byte_buffer_length:"+str(self.byte_buffer_length))
+                # print("total_packet_length:"+str(total_packet_length))
                 if (self.byte_buffer_length >= total_packet_length) and (self.byte_buffer_length != 0):
                     magic_ok = 1
-                else:
-                    print("magic not ok")
-
+                # else:
+                #     print("magic_not_OK")
             if magic_ok:
                 # return True, True, True
                 index = 0
-                magic_number = byte_buffer[index:index+8]
+                magic_number = self.byte_buffer[index:index + 8]
                 index += 8
-                version = format(np.matmul(byte_buffer[index:index+4], word), 'x')
+                version = format(np.matmul(self.byte_buffer[index:index + 4], word), 'x')
                 index += 4
-                total_packet_length = np.matmul(byte_buffer[index:index+4], word)
+                total_packet_length = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
-                platform = format(np.matmul(byte_buffer[index:index+4], word), 'x')
+                platform = format(np.matmul(self.byte_buffer[index:index + 4], word), 'x')
                 index += 4
-                frame_number = np.matmul(byte_buffer[index:index+4], word)
+                frame_number = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
-                time_cpu_cycle = np.matmul(byte_buffer[index:index+4], word)
+                time_cpu_cycle = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
-                num_detected_object = np.matmul(byte_buffer[index:index+4], word)
+                num_detected_object = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
-                tlvs = np.matmul(byte_buffer[index:index+4], word)
+                tlvs = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
+                print("frame_number:" + str(frame_number))
+
                 for _ in range(tlvs):
-                    tlv_type = np.matmul(byte_buffer[index:index+4], word)
+                    tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
+                    print("tlvs:" + str(tlv_type))
                     index += 4
-                    tlv_length = np.matmul(byte_buffer[index:index+4], word)
+                    tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
                     if tlv_type == demo_uart_msg_detected_points:
-                        tlv_num_obj = np.matmul(byte_buffer[index:index+2], word[:2])
+                        print("demo_uart_msg_detected_points")
+                        tlv_num_obj = np.matmul(self.byte_buffer[index:index + 2], word[:2])
                         index += 2
-                        tlv_xyz_format = np.matmul(byte_buffer[index:index+2], word[:2])
+                        tlv_xyz_format = np.matmul(self.byte_buffer[index:index + 2], word[:2])
                         index += 2
 
                         range_index = np.zeros(tlv_num_obj, dtype='int16')
@@ -178,16 +202,26 @@ class Radar:
                         z = np.zeros(tlv_num_obj, dtype='int16')
 
                         for i in range(tlv_num_obj):
-                            for variable in [range_index, doppler_index, peak_value, x, y, z]:
-                                variable[i] = np.matmul(byte_buffer[index:index + 2], word[:2])
-                                index += 2
+                            range_index[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                            index += 2
+                            doppler_index[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                            index += 2
+                            peak_value[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                            index += 2
+                            x[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                            index += 2
+                            y[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                            index += 2
+                            z[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                            index += 2
 
                         range_value = range_index * self._config_parameter["RangeIndexToMeters"]
-                        doppler_index[doppler_index > (self._config_parameter["DopplerBins"]/2-1)] = \
-                            doppler_index[doppler_index > (self._config_parameter["DopplerBins"]/2-1)]-65535
+                        doppler_index[doppler_index > (self._config_parameter["DopplerBins"] / 2 - 1)] = \
+                            doppler_index[doppler_index > (self._config_parameter["DopplerBins"] / 2 - 1)] - 65535
                         doppler_value = doppler_index * self._config_parameter["DopplerResolution"]
-
-                        x, y, z = map(lambda item: item/tlv_xyz_format, [x, y, z])
+                        x = x / tlv_xyz_format
+                        y = y / tlv_xyz_format
+                        z = z / tlv_xyz_format
 
                         detected_object.update(
                             {
@@ -204,10 +238,16 @@ class Radar:
                         )
                         data_ok = 1
 
-                    if tlv_type == demo_uart_msg_range_doppler_heatmap:
+                    elif tlv_type == demo_uart_msg_range_profile:
+                        num_bytes = 2 * self._config_parameter["RangeBins"]
+                        range_profile = self.byte_buffer[index:index + num_bytes].view(dtype='int16')
+                        index += tlv_length
+                        data_ok = 1
+
+                    elif tlv_type == demo_uart_msg_range_doppler:
                         num_bytes = 2 * self._config_parameter["RangeBins"] * self._config_parameter["DopplerBins"]
 
-                        payload = byte_buffer[index:index + num_bytes]
+                        payload = self.byte_buffer[index:index + num_bytes]
                         index += num_bytes
                         range_doppler = payload.view(dtype=np.int16)
 
@@ -222,17 +262,17 @@ class Radar:
 
                         range_doppler = np.append(
                             range_doppler[int(len(range_doppler) / 2):],
-                            range_doppler[:int(len(range_doppler)/2)],
+                            range_doppler[:int(len(range_doppler) / 2)],
                             axis=0
                         )
 
                         range_array = np.array(
-                            range(self._config_parameter["RangeBins"]))*self._config_parameter["RangeIndexToMeters"]
+                            range(self._config_parameter["RangeBins"])) * self._config_parameter["RangeIndexToMeters"]
 
                         doppler_array = np.multiply(
                             np.arange(
-                                -self._config_parameter["DopplerBins"]/2,
-                                self._config_parameter["DopplerBins"]/2
+                                -self._config_parameter["DopplerBins"] / 2,
+                                self._config_parameter["DopplerBins"] / 2
                             ),
                             self._config_parameter["DopplerResolution"]
                         )
@@ -243,27 +283,24 @@ class Radar:
                                 "doppler-array": doppler_array
                             }
                         )
-                        # plt.clf()
-                        # cs = plt.contourf(range_array, doppler_array, range_doppler)
-                        # self.fig.colorbar(cs, shrink=0.9)
-                        # self.fig.canvas.draw()
-                        # plt.pause(0.1)
+                        data_ok = 1
 
                 if index > 0 and data_ok == 1:
                     shift_index = index
-                    byte_buffer[:self.byte_buffer_length - shift_index] = byte_buffer[shift_index:self.byte_buffer_length]
+                    self.byte_buffer[:self.byte_buffer_length - shift_index] = \
+                        self.byte_buffer[shift_index:self.byte_buffer_length]
                     self.byte_buffer_length -= shift_index
 
                     if self.byte_buffer_length < 0:
                         self.byte_buffer_length = 0
 
-        return data_ok, frame_number, range_doppler_data
+        return data_ok, frame_number, range_doppler_data, range_profile
 
     def close_connection(self):
         self._writer.write("]")
         self._writer.close()
         self._cli.write("sensorStop\n".encode())
-        time.sleep(0.01)
+        time.sleep(0.5)
         self._cli.close()
         self._data.close()
 
@@ -287,18 +324,18 @@ class Radar:
             }
 
     def plot_3d_scatter(self, detected_object):
-        if len(self.length_list) >= 10:  # clear every X*0.04 s
+        if len(self.length_list) >= 10:  # delay x * 0.04 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
             self.length_list.pop(0)
         self.ax.cla()
-        self.length_list.append(detected_object["NumObj"])
-        self.xs += detected_object["x"]
-        self.ys += detected_object["y"]
-        self.zs += detected_object["z"]
+        self.length_list.append(len(detected_object["x"]))
+        self.xs += list(detected_object["x"])
+        self.ys += list(detected_object["y"])
+        self.zs += list(detected_object["z"])
         self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
-        self.ax.set_xlabel('azimuth (cm)')
+        self.ax.set_xlabel('X(cm)')
         self.ax.set_ylabel('range (cm)')
         self.ax.set_zlabel('elevation (cm)')
         self.ax.set_xlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
@@ -307,11 +344,22 @@ class Radar:
         plt.draw()
         plt.pause(1 / 30)
 
+    def plot_range_doppler(self, heatmap_data):
+        plt.clf()
+        cs = plt.contourf(
+            heatmap_data["range-array"],
+            heatmap_data["doppler-array"],
+            heatmap_data["range-doppler"]
+        )
+        self.fig.colorbar(cs)
+        self.fig.canvas.draw()
+        plt.pause(0.1)
+
     @staticmethod
     def plot_range_profile(range_bins):
         plt.cla()
-        plt.ylim((0, 30000))
-        plt.xlim((0, 127))
+        plt.ylim((0, 10000))
+        plt.xlim((0, 256))
         plt.plot(range_bins)
         plt.pause(0.0001)
 
@@ -350,7 +398,7 @@ class Radar:
     def write_to_json(self, detected_object):
         new_line = json.dumps(detected_object)
         if self._wrote_flag:
-            self._writer.write(f"[[{time.time()}, {new_line}]")
+            self._writer.write(f"[[{new_line}]")
             self._wrote_flag = False
         else:
-            self._writer.write(f",\n[{time.time()}, {new_line}]")
+            self._writer.write(f",\n[{new_line}]")
