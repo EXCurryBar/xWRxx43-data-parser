@@ -1,5 +1,4 @@
 import pprint
-import cv2
 import sys
 import serial
 import serial.tools.list_ports
@@ -203,19 +202,11 @@ class Radar:
                         y = np.zeros(tlv_num_obj, dtype='int16')
                         z = np.zeros(tlv_num_obj, dtype='int16')
 
+                        param_list = [range_index, doppler_index, peak_value, x, y, z]
                         for i in range(tlv_num_obj):
-                            range_index[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                            index += 2
-                            doppler_index[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                            index += 2
-                            peak_value[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                            index += 2
-                            x[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                            index += 2
-                            y[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                            index += 2
-                            z[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                            index += 2
+                            for item in param_list:
+                                item[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                                index += 2
 
                         range_value = range_index * self._config_parameter["RangeIndexToMeters"]
                         doppler_index[doppler_index > (self._config_parameter["DopplerBins"] / 2 - 1)] = \
@@ -352,15 +343,16 @@ class Radar:
         plt.draw()
         plt.pause(1 / 30)
 
-    def plot_range_doppler(self, heatmap_data):
+    def plot_range_doppler(self, heatmap_data, alpha):
         plt.clf()
-        self.accumulated = heatmap_data["range-doppler"]*0.7 + self.accumulated*0.3
+        self.accumulated = heatmap_data["range-doppler"]*alpha + self.accumulated*(1-alpha)
         plot_data = heatmap_data["range-doppler"] - self.accumulated
         cs = plt.contourf(
             heatmap_data["range-array"],
             heatmap_data["doppler-array"],
             plot_data,
-            vmax=500,
+            cmap='turbo',
+            vmax=1000,
             vmin=0
         )
         self.fig.colorbar(cs)
@@ -407,10 +399,12 @@ class Radar:
             "z": zs
         }
 
-    def write_to_json(self, detected_object):
+    def write_to_json(self, detected_object: dict):
+        for key, values in detected_object.items():
+            detected_object[key] = values.tolist()
         new_line = json.dumps(detected_object)
         if self._wrote_flag:
-            self._writer.write(f"[[{new_line}]")
+            self._writer.write(f"[[{time.time()}, {new_line}]")
             self._wrote_flag = False
         else:
-            self._writer.write(f",\n[{new_line}]")
+            self._writer.write(f",\n[{time.time()}, {new_line}]")
