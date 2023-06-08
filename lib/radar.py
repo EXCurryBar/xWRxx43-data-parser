@@ -1,4 +1,5 @@
 import pprint
+import cv2
 import sys
 import serial
 import serial.tools.list_ports
@@ -25,6 +26,7 @@ class Radar:
         self.xs = list()
         self.ys = list()
         self.zs = list()
+        self.accumulated = np.zeros((16, 128))
 
         # uart things variable
         port = self._read_com_port()
@@ -278,7 +280,7 @@ class Radar:
                         )
                         range_doppler_data.update(
                             {
-                                "range-doppler": range_doppler.tolist(),
+                                "range-doppler": range_doppler,
                                 "range-array": range_array,
                                 "doppler-array": doppler_array
                             }
@@ -352,10 +354,14 @@ class Radar:
 
     def plot_range_doppler(self, heatmap_data):
         plt.clf()
+        self.accumulated = heatmap_data["range-doppler"]*0.7 + self.accumulated*0.3
+        plot_data = heatmap_data["range-doppler"] - self.accumulated
         cs = plt.contourf(
             heatmap_data["range-array"],
             heatmap_data["doppler-array"],
-            heatmap_data["range-doppler"]
+            plot_data,
+            vmax=500,
+            vmin=0
         )
         self.fig.colorbar(cs)
         self.fig.canvas.draw()
