@@ -1,4 +1,3 @@
-import pprint
 import sys
 import serial
 import serial.tools.list_ports
@@ -59,6 +58,17 @@ class Radar:
             time.sleep(0.01)
 
     def _parse_config(self):
+        chirp_end_index = 0
+        chirp_start_index = 0
+        adc_samples_next = 0
+        loop_count = 0
+        sample_rate = 0
+        frequency_slope_const = 0
+        adc_samples = 0
+        start_frequency = 0
+        idle_time = 0
+        ramp_end_time = 0
+
         num_rx = 4
         num_tx = 3
         for line in self._config:
@@ -178,13 +188,12 @@ class Radar:
                 index += 4
                 num_detected_object = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
-                tlvs = np.matmul(self.byte_buffer[index:index + 4], word)
+                tlv_types = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
                 # print("frame_number:" + str(frame_number))
 
-                for _ in range(tlvs):
+                for _ in range(tlv_types):
                     tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
-                    # print("tlvs:" + str(tlv_type))
                     index += 4
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
