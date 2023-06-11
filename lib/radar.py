@@ -1,3 +1,4 @@
+import pprint
 import sys
 import serial
 import serial.tools.list_ports
@@ -108,6 +109,7 @@ class Radar:
                 "MaxVelocity": 3e8 / (4 * start_frequency * 1e9 * (idle_time + ramp_end_time) * 1e6 * num_tx)
             }
         )
+        pprint.pprint(self._config_parameter)
 
     def parse_data(self):
         # header.version
@@ -352,18 +354,23 @@ class Radar:
         plt.draw()
         plt.pause(1 / 30)
 
-    def plot_range_doppler(self, heatmap_data, alpha):
+    def plot_range_doppler(self, heatmap_data, alpha=0.5, threshold=200):
         plt.clf()
         try:
             self.accumulated = heatmap_data["range-doppler"] * alpha + self.accumulated * (1 - alpha)
             plot_data = heatmap_data["range-doppler"] - self.accumulated
+            for i in range(len(plot_data)):
+                for j in range(len(plot_data[i])):
+                    if plot_data[i][j] < threshold:
+                        plot_data[i][j] = threshold
             cs = plt.contourf(
                 heatmap_data["range-array"],
                 heatmap_data["doppler-array"],
+                # heatmap_data["range-doppler"],
                 plot_data,
                 cmap='turbo',
                 vmax=1000,
-                vmin=0
+                vmin=threshold
             )
             self.fig.colorbar(cs)
             self.fig.canvas.draw()

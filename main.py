@@ -16,7 +16,7 @@ if __name__ == '__main__':
         try:
             dataOK, frameNumber, range_doppler, range_profile = radar.parse_data()
             if dataOK:
-                radar.plot_range_doppler(range_doppler, alpha=0.6)
+                radar.plot_range_doppler(range_doppler, alpha=0.7, threshold=200)
                 radar.write_to_json(range_doppler)
                 # time.sleep(1/30)
 
