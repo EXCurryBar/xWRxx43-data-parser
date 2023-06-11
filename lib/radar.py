@@ -354,19 +354,22 @@ class Radar:
 
     def plot_range_doppler(self, heatmap_data, alpha):
         plt.clf()
-        self.accumulated = heatmap_data["range-doppler"]*alpha + self.accumulated*(1-alpha)
-        plot_data = heatmap_data["range-doppler"] - self.accumulated
-        cs = plt.contourf(
-            heatmap_data["range-array"],
-            heatmap_data["doppler-array"],
-            plot_data,
-            cmap='turbo',
-            vmax=1000,
-            vmin=0
-        )
-        self.fig.colorbar(cs)
-        self.fig.canvas.draw()
-        plt.pause(0.1)
+        try:
+            self.accumulated = heatmap_data["range-doppler"] * alpha + self.accumulated * (1 - alpha)
+            plot_data = heatmap_data["range-doppler"] - self.accumulated
+            cs = plt.contourf(
+                heatmap_data["range-array"],
+                heatmap_data["doppler-array"],
+                plot_data,
+                cmap='turbo',
+                vmax=1000,
+                vmin=0
+            )
+            self.fig.colorbar(cs)
+            self.fig.canvas.draw()
+            plt.pause(0.1)
+        except KeyError:
+            pass
 
     @staticmethod
     def plot_range_profile(range_bins):
