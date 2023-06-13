@@ -1,3 +1,5 @@
+import pprint
+import sys
 import serial
 import serial.tools.list_ports
 import time
@@ -105,13 +107,15 @@ class Radar:
         demo_uart_msg_detected_points = 1
         demo_uart_msg_range_profile = 2
         demo_uart_msg_azimuth_static_heat_map = 4
+        demo_uart_msg_range_doppler = 5
         magic_word = [2, 1, 4, 3, 6, 5, 8, 7]
 
         magic_ok = 0
         data_ok = 0
         frame_number = 0
         detected_object = dict()
-        detected_heatmap = dict()
+        range_doppler_data = dict()
+        range_profile = list()
 
         # 讀資料
         read_buffer = self._data.read(self._data.in_waiting)
@@ -141,8 +145,8 @@ class Radar:
             if start_index:
                 # print("start_index[0]:"+str(start_index[0]))
                 if start_index[0] > 0:
-                    self.byte_buffer[:self.byte_buffer_length - start_index[0]] = self.byte_buffer[start_index[
-                                                                                                       0]:self.byte_buffer_length]
+                    self.byte_buffer[:self.byte_buffer_length - start_index[0]] = \
+                        self.byte_buffer[start_index[0]:self.byte_buffer_length]
                     self.byte_buffer_length -= start_index[0]
                     start_index[0] = 0
 
@@ -154,8 +158,8 @@ class Radar:
                 # print("total_packet_length:"+str(total_packet_length))
                 if (self.byte_buffer_length >= total_packet_length) and (self.byte_buffer_length != 0):
                     magic_ok = 1
-                else:
-                    print("magic_not_OK")
+                # else:
+                #     print("magic_not_OK")
             if magic_ok:
                 # return True, True, True
                 index = 0
@@ -175,11 +179,11 @@ class Radar:
                 index += 4
                 tlvs = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
-                print("frame_number:" + str(frame_number))
+                # print("frame_number:" + str(frame_number))
 
                 for _ in range(tlvs):
                     tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
-                    print("tlvs:" + str(tlv_type))
+                    # print("tlvs:" + str(tlv_type))
                     index += 4
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
@@ -235,60 +239,111 @@ class Radar:
                         data_ok = 1
 
                     elif tlv_type == demo_uart_msg_range_profile:
+                        num_bytes = 2 * self._config_parameter["RangeBins"]
+                        range_profile = self.byte_buffer[index:index + num_bytes].view(dtype='int16')
                         index += tlv_length
+                        data_ok = 1
+
                     elif tlv_type == demo_uart_msg_azimuth_static_heat_map:
-                        print("demo_uart_msg_azimuth_static_heat_map::")
-                        NUM_ANGLE_BINS = 64  # 角分辨率
-                        num_bytes = 32 * self._config_parameter["RangeBins"]
-                        azimuth_static = self._config_parameter["RangeBins"] * 4 * 2
-                        q = self.byte_buffer[index:index + num_bytes]  # azimuth_static
-                        index += num_bytes
-                        q = np.frombuffer(q, dtype=np.uint8)
-                        q = q[0::2] + q[1::2] * 2 ** 8
-                        q[q > 32767] = q[q > 32767] - 65536
-                        q = q[0::2] + 1j * q[1::2]
-                        # q = np.array([q[i] + 1j * q[i+1] for i in range(0, len(q), 2)])
-                        q = q.reshape(8, self._config_parameter["RangeBins"])
-                        # q = np.reshape(q, (self._config_parameter["RangeBins"],8))
-                        Q = np.fft.fft(q, NUM_ANGLE_BINS, axis=0)
-                        QQ = np.fft.fftshift(np.abs(Q), axes=0).T
-                        QQ = QQ[:, 1:]
-                        QQ = np.fliplr(QQ)
+                        numTxAzimAnt = 2
+                        numRxAnt = 4
+                        numBytes = numTxAzimAnt * numRxAnt * self._config_parameter["RangeBins"] * 4
 
-                        theta = np.arcsin(np.arange(-NUM_ANGLE_BINS / 2 + 1, NUM_ANGLE_BINS / 2) * (2 / NUM_ANGLE_BINS))
-                        range1 = np.arange(self._config_parameter["RangeBins"]) * self._config_parameter[
-                            "RangeResolution"]
+                        q = self.byte_buffer[index:index + numBytes]
 
-                        # range_depth = self._config_parameter["RangeBins"] * self._config_parameter["RangeResolution"]
-                        # range_width, grid_res = range_depth / 2, 400
+                        index += numBytes
+                        qrows = numTxAzimAnt * numRxAnt
+                        qcols = self._config_parameter["RangeBins"] 
+                        NUM_ANGLE_BINS = 64
 
-                        # xi = np.linspace(-range_width, range_width, grid_res)
-                        # yi = np.linspace(0, range_depth, grid_res)
-                        # xi, yi = np.meshgrid(xi, yi)
-                        # x = np.array([r]).T * np.sin(theta)
-                        # y = np.array([r]).T * np.cos(theta)
-                        # y = y - 0.04
+                        real = q[::4] + q[1::4] * 256
+                        imaginary = q[2::4] + q[3::4] * 256
 
+                        real = real.astype(np.int16)
+                        imaginary = imaginary.astype(np.int16)
+
+                        q = real + 1j * imaginary
+
+                        q = np.reshape(q, (qrows, qcols), order="F")
+
+                        Q = np.fft.fft(q,NUM_ANGLE_BINS,axis=0)
+                        QQ = np.fft.fftshift(abs(Q),axes=0);
+                        QQ = QQ.T
+                        QQ = QQ[:,1:]
+                        QQ = np.fliplr(QQ).tolist()
+
+                        theta = np.rad2deg(
+                            np.arcsin(np.array(range(-NUM_ANGLE_BINS//2+1,NUM_ANGLE_BINS//2))*(2/NUM_ANGLE_BINS)))
+                        rangeArray = np.arange(
+                            0, self._config_parameter["RangeBins"]) * self._config_parameter["RangeIndexToMeters"]
+                        # range1 -= Params.compRxChanCfg.rangeBias
+                        # rangeArray = np.maximum(rangeArray, 0)
+                        
+                        posX = np.outer(rangeArray.T,np.sin(np.deg2rad(theta)))
+                        posY = np.outer(rangeArray.T,np.cos(np.deg2rad(theta)))
                         detected_object.update(
                             {
-                                "QQ": QQ.tolist(),
+                                "posX": posX,
+                                "posY": posY,
+                                "range": rangeArray,
                                 "theta": theta.tolist(),
-                                "range": range1.tolist()
+                                "heatMap": QQ
                             }
                         )
 
                         data_ok = 1
+                        
+                    elif tlv_type == demo_uart_msg_range_doppler:
+                        num_bytes = 2 * self._config_parameter["RangeBins"] * self._config_parameter["DopplerBins"]
+
+                        payload = self.byte_buffer[index:index + num_bytes]
+                        index += num_bytes
+                        range_doppler = payload.view(dtype=np.int16)
+
+                        if np.max(range_doppler) > 10000:
+                            continue
+
+                        range_doppler = np.reshape(
+                            range_doppler,
+                            (self._config_parameter["DopplerBins"], self._config_parameter["RangeBins"]),
+                            'F'
+                        )
+
+                        range_doppler = np.append(
+                            range_doppler[int(len(range_doppler) / 2):],
+                            range_doppler[:int(len(range_doppler) / 2)],
+                            axis=0
+                        )
+
+                        range_array = np.array(
+                            range(self._config_parameter["RangeBins"])) * self._config_parameter["RangeIndexToMeters"]
+
+                        doppler_array = np.multiply(
+                            np.arange(
+                                -self._config_parameter["DopplerBins"] / 2,
+                                self._config_parameter["DopplerBins"] / 2
+                            ),
+                            self._config_parameter["DopplerResolution"]
+                        )
+                        range_doppler_data.update(
+                            {
+                                "range-doppler": range_doppler.tolist(),
+                                "range-array": range_array,
+                                "doppler-array": doppler_array
+                            }
+                        )
+                        data_ok = 1
 
                 if index > 0 and data_ok == 1:
                     shift_index = index
-                    self.byte_buffer[:self.byte_buffer_length - shift_index] = self.byte_buffer[
-                                                                               shift_index:self.byte_buffer_length]
+                    self.byte_buffer[:self.byte_buffer_length - shift_index] = \
+                        self.byte_buffer[shift_index:self.byte_buffer_length]
                     self.byte_buffer_length -= shift_index
 
                     if self.byte_buffer_length < 0:
                         self.byte_buffer_length = 0
 
-        return data_ok, frame_number, detected_object
+        return data_ok, frame_number, detected_object, range_doppler_data, range_profile
 
     def close_connection(self):
         self._writer.write("]")
@@ -301,20 +356,26 @@ class Radar:
     def _read_com_port(self):
         data_port = ""
         cli_port = ""
-        ports = serial.tools.list_ports.comports(include_links=False)
-        for port in ports:
-            if "XDS110 Class Auxiliary Data Port" in port.description:
-                data_port = port.name
-            elif "XDS110 Class Application/User" in port.description:
-                cli_port = port.name
+        if sys.platform == "win32" or sys.platform == "cygwin":
+            ports = serial.tools.list_ports.comports(include_links=False)
+            for port in ports:
+                if "XDS110 Class Auxiliary Data Port" in port.description:
+                    data_port = port.name
+                elif "XDS110 Class Application/User" in port.description:
+                    cli_port = port.name
 
-        if not data_port or not cli_port:
-            input("please connect the radar and press Enter...")
-            return self._read_com_port()
-        else:
+            if not data_port or not cli_port:
+                input("please connect the radar and press Enter...")
+                return self._read_com_port()
+            else:
+                return {
+                    "DataPort": data_port,
+                    "CliPort": cli_port
+                }
+        elif sys.platform == "linux":
             return {
-                "DataPort": data_port,
-                "CliPort": cli_port
+                "DataPort": "/dev/ttyACM1",
+                "CliPort": "/dev/ttyACM0"
             }
 
     def plot_3d_scatter(self, detected_object):
@@ -337,23 +398,65 @@ class Radar:
         self.ax.set_zlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
         plt.draw()
         plt.pause(1 / 30)
-
+        
     def plot_heat_map(self, detected_object):
-        theta = detected_object["theta"]
-        r, theta_rad = np.meshgrid(detected_object["range"], np.radians(theta))
-        x = r * np.cos(theta_rad)
-        y = r * np.sin(theta_rad)
+        plt.clf()
+        cs = plt.contourf(detected_object["posX"],detected_object["posY"],detected_object["heatMap"])
         # 绘制热力图
-        plt.imshow(detected_object["QQ"],
-                   extent=[min(detected_object["theta"]), max(detected_object["theta"]), min(detected_object["range"]),
-                           max(detected_object["range"])], aspect='auto', cmap='rainbow', vmin=0,
-                   vmax=np.max(detected_object["QQ"]))
-        # plt.gca().invert_yaxis()
+        self.fig.colorbar(cs)
+        self.fig.canvas.draw()
+        plt.pause(0.1)
 
-        plt.xlabel('Azimuth Angle [degree]')
-        plt.ylabel('Range [m]')
-        plt.draw()
-        plt.pause(1 / 4)
+    def plot_range_doppler(self, heatmap_data):
+        plt.clf()
+        cs = plt.contourf(
+            heatmap_data["range-array"],
+            heatmap_data["doppler-array"],
+            heatmap_data["range-doppler"]
+        )
+        self.fig.colorbar(cs)
+        self.fig.canvas.draw()
+        plt.pause(0.1)
+
+    @staticmethod
+    def plot_range_profile(range_bins):
+        plt.cla()
+        plt.ylim((0, 10000))
+        plt.xlim((0, 256))
+        plt.plot(range_bins)
+        plt.pause(0.0001)
+
+    @staticmethod
+    def remove_static(detected_object):
+        motion = detected_object["Doppler"]
+        range_index = list(detected_object["RangeIndex"])
+        range_value = list(detected_object["Range"])
+        doppler_index = list(detected_object["DopplerIndex"])
+        peak = list(detected_object["PeakValue"])
+        xs = list(detected_object["x"])
+        ys = list(detected_object["y"])
+        zs = list(detected_object["z"])
+        static_index = [i for i in range(len(motion)) if motion[i] == 0]
+        for index in sorted(static_index, reverse=True):
+            del motion[index]
+            del range_index[index]
+            del range_value[index]
+            del doppler_index[index]
+            del peak[index]
+            del xs[index]
+            del ys[index]
+            del zs[index]
+        return {
+            "NumObj": len(range_index),
+            "RangeIndex": range_index,
+            "Range": range_value,
+            "DopplerIndex": doppler_index,
+            "Doppler": motion,
+            "PeakValue": peak,
+            "x": xs,
+            "y": ys,
+            "z": zs
+        }
 
     def write_to_json(self, detected_object):
         new_line = json.dumps(detected_object)
@@ -362,26 +465,3 @@ class Radar:
             self._wrote_flag = False
         else:
             self._writer.write(f",\n[{new_line}]")
-
-
-if __name__ == '__main__':
-    CLI_BAUD = 115200
-    DATA_BAUD = 921600
-    radar = Radar("heatmap.cfg", CLI_BAUD, DATA_BAUD)
-    while True:
-        try:
-            dataOK, frameNumber, detObj = radar.parse_data()
-            # print(dataOK)
-            if dataOK:
-                radar.plot_heat_map(detObj)
-                # print(detObj)
-                # radar.plot_3d_scatter(detObj)
-                # radar.write_to_json(detObj)
-            # let radar rest or whatever
-            time.sleep(1 / 30)
-
-        except KeyboardInterrupt or serial.SerialException:
-            # if ^C pressed
-            print("\Peace")
-            radar.close_connection()
-            break
