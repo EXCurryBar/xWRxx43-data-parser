@@ -12,7 +12,7 @@ if __name__ == '__main__':
     radar = Radar("heatmap.cfg", CLI_BAUD, DATA_BAUD)
     while True:
         try:
-            data_ok, frame_number, detected_object = radar.parse_data()
+            data_ok, frame_number, detected_object, range_doppler_data, range_profile = radar.parse_data()
             if data_ok:
                 # radar.write_to_json(detObj, range_bin)
                 radar.plot_heat_map(detected_object)
