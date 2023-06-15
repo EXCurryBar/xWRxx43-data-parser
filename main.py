@@ -18,7 +18,7 @@ if __name__ == '__main__':
                 radar.plot_heat_map(detected_object)
             # sleep(1/5)
         except KeyboardInterrupt or SerialException:
-            # if ^C
+            # if ^C pressed
             radar.close_connection()
             print("\nPeace")
             break
