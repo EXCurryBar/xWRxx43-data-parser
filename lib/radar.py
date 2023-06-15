@@ -32,6 +32,7 @@ class Radar:
         self._data = serial.Serial(port["DataPort"], data_baud_rate)
         self._send_config(config_file_name)
         self._parse_config()
+        self.accumulated = np.zeros((128, 63), dtype='float32')
 
         # plotting variable
         # self.fig = plt.figure()
@@ -398,10 +399,28 @@ class Radar:
         self.ax.set_zlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
         plt.draw()
         plt.pause(1 / 30)
-        
+
+    def accumulate_weight(self, data, alpha=0.7, threshold=400):
+        self.accumulated = \
+            self.accumulated * (1 - alpha) + np.array(data["heatMap"], dtype='float32') * alpha
+        plot_data = np.array(data["heatMap"], dtype='float32') - self.accumulated
+        for i in range(len(plot_data)):
+            for j in range(len(plot_data[i])):
+                if plot_data[i][j] <= 400:
+                    plot_data[i][j] = 400
+        return plot_data
+
     def plot_heat_map(self, detected_object):
         plt.clf()
-        cs = plt.contourf(detected_object["posX"],detected_object["posY"],detected_object["heatMap"])
+
+        plot_data = self.accumulate_weight(detected_object)
+        cs = plt.contourf(
+            detected_object["posX"],
+            detected_object["posY"],
+            plot_data,
+            vmax=2000,
+            vmin=400
+        )
         # 绘制热力图
         self.fig.colorbar(cs)
         self.fig.canvas.draw()
