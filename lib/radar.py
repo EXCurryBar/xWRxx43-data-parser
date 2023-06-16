@@ -33,6 +33,7 @@ class Radar:
         self._data = serial.Serial(port["DataPort"], data_baud_rate)
         self._send_config(config_file_name)
         self._parse_config()
+        self.accumulated = np.zeros((128, 63), dtype='float32')
 
         # plotting variable
         # self.fig = plt.figure()
@@ -248,6 +249,55 @@ class Radar:
                         index += tlv_length
                         data_ok = 1
 
+                    elif tlv_type == demo_uart_msg_azimuth_static_heat_map:
+                        numTxAzimAnt = 2
+                        numRxAnt = 4
+                        numBytes = numTxAzimAnt * numRxAnt * self._config_parameter["RangeBins"] * 4
+
+                        q = self.byte_buffer[index:index + numBytes]
+
+                        index += numBytes
+                        qrows = numTxAzimAnt * numRxAnt
+                        qcols = self._config_parameter["RangeBins"] 
+                        NUM_ANGLE_BINS = 64
+
+                        real = q[::4] + q[1::4] * 256
+                        imaginary = q[2::4] + q[3::4] * 256
+
+                        real = real.astype(np.int16)
+                        imaginary = imaginary.astype(np.int16)
+
+                        q = real + 1j * imaginary
+
+                        q = np.reshape(q, (qrows, qcols), order="F")
+
+                        Q = np.fft.fft(q,NUM_ANGLE_BINS,axis=0)
+                        QQ = np.fft.fftshift(abs(Q),axes=0)
+                        QQ = QQ.T
+                        QQ = QQ[:,1:]
+                        QQ = np.fliplr(QQ).tolist()
+
+                        theta = np.rad2deg(
+                            np.arcsin(np.array(range(-NUM_ANGLE_BINS//2+1,NUM_ANGLE_BINS//2))*(2/NUM_ANGLE_BINS)))
+                        rangeArray = np.arange(
+                            0, self._config_parameter["RangeBins"]) * self._config_parameter["RangeIndexToMeters"]
+                        # range1 -= Params.compRxChanCfg.rangeBias
+                        # rangeArray = np.maximum(rangeArray, 0)
+                        
+                        posX = np.outer(rangeArray.T,np.sin(np.deg2rad(theta)))
+                        posY = np.outer(rangeArray.T,np.cos(np.deg2rad(theta)))
+                        detected_object.update(
+                            {
+                                "posX": posX,
+                                "posY": posY,
+                                "range": rangeArray,
+                                "theta": theta.tolist(),
+                                "heatMap": QQ
+                            }
+                        )
+
+                        data_ok = 1
+
                     elif tlv_type == demo_uart_msg_range_doppler:
                         num_bytes = 2 * self._config_parameter["RangeBins"] * self._config_parameter["DopplerBins"]
 
@@ -298,7 +348,7 @@ class Radar:
                     if self.byte_buffer_length < 0:
                         self.byte_buffer_length = 0
 
-        return data_ok, frame_number, range_doppler_data, range_profile
+        return data_ok, frame_number, detected_object, range_doppler_data, range_profile
 
     def close_connection(self):
         self._writer.write("]")
@@ -378,6 +428,37 @@ class Radar:
         except KeyError:
             pass
 
+    def accumulate_weight(self, data, alpha=0.7, threshold=400):
+        try:
+            self.accumulated = \
+                self.accumulated * (1 - alpha) + np.array(data["heatMap"], dtype='float32') * alpha
+            plot_data = np.array(data["heatMap"], dtype='float32') - self.accumulated
+            for i in range(len(plot_data)):
+                for j in range(len(plot_data[i])):
+                    if plot_data[i][j] <= threshold:
+                        plot_data[i][j] = threshold
+
+            data.update({"heatMap": plot_data})
+        except KeyError:
+            print("corrupted data")
+            pass
+
+    def plot_heat_map(self, detected_object):
+        plt.clf()
+        threshold = 400
+        self.accumulate_weight(detected_object, threshold=threshold)
+        cs = plt.contourf(
+            detected_object["posX"],
+            detected_object["posY"],
+            detected_object["heatMap"],
+            vmax=2000,
+            vmin=threshold
+        )
+        # 绘制热力图
+        self.fig.colorbar(cs)
+        self.fig.canvas.draw()
+        plt.pause(0.1)
+
     @staticmethod
     def plot_range_profile(range_bins):
         plt.cla()
@@ -423,7 +504,7 @@ class Radar:
             detected_object[key] = values.tolist()
         new_line = json.dumps(detected_object)
         if self._wrote_flag:
-            self._writer.write(f"[[{time.time()}, {new_line}]")
+            self._writer.write(f"[[{new_line}]")
             self._wrote_flag = False
         else:
-            self._writer.write(f",\n[{time.time()}, {new_line}]")
+            self._writer.write(f",\n[{new_line}]")
