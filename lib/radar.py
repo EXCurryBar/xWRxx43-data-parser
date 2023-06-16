@@ -401,25 +401,30 @@ class Radar:
         plt.pause(1 / 30)
 
     def accumulate_weight(self, data, alpha=0.7, threshold=400):
-        self.accumulated = \
-            self.accumulated * (1 - alpha) + np.array(data["heatMap"], dtype='float32') * alpha
-        plot_data = np.array(data["heatMap"], dtype='float32') - self.accumulated
-        for i in range(len(plot_data)):
-            for j in range(len(plot_data[i])):
-                if plot_data[i][j] <= 400:
-                    plot_data[i][j] = 400
-        return plot_data
+        try:
+            self.accumulated = \
+                self.accumulated * (1 - alpha) + np.array(data["heatMap"], dtype='float32') * alpha
+            plot_data = np.array(data["heatMap"], dtype='float32') - self.accumulated
+            for i in range(len(plot_data)):
+                for j in range(len(plot_data[i])):
+                    if plot_data[i][j] <= threshold:
+                        plot_data[i][j] = threshold
+
+            data.update({"heatMap": plot_data})
+        except KeyError:
+            print("corrupted data")
+            pass
 
     def plot_heat_map(self, detected_object):
         plt.clf()
-
-        plot_data = self.accumulate_weight(detected_object)
+        threshold = 400
+        self.accumulate_weight(detected_object, threshold=threshold)
         cs = plt.contourf(
             detected_object["posX"],
             detected_object["posY"],
-            plot_data,
+            detected_object["heatMap"],
             vmax=2000,
-            vmin=400
+            vmin=threshold
         )
         # 绘制热力图
         self.fig.colorbar(cs)
