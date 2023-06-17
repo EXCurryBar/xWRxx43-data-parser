@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 import functools
-PLOT_RANGE_IN_CM = 500
+PLOT_RANGE_IN_CM = 1000
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -36,10 +36,7 @@ class Radar:
         self.xs = list()
         self.ys = list()
         self.zs = list()
-        self.accumulated = {
-            "doppler": np.zeros((16, 128), dtype='float32'),
-            "azimuth": np.zeros((128, 63), dtype='float32')
-        }
+        self.accumulated = dict()
 
         # uart things variable
         port = self._read_com_port()
@@ -122,6 +119,13 @@ class Radar:
                         chirps_per_frame / num_tx)),
                 "MaxRange": (300 * 0.9 * sample_rate) / (2 * frequency_slope_const * 1e3),
                 "MaxVelocity": 3e8 / (4 * start_frequency * 1e9 * (idle_time + ramp_end_time) * 1e6 * num_tx)
+            }
+        )
+        self.accumulated.update(
+            {
+                "doppler": np.zeros(
+                    (self._config_parameter["DopplerBins"], self._config_parameter["RangeBins"]), dtype='float32'),
+                "azimuth": np.zeros((self._config_parameter["RangeBins"], 63), dtype='float32')
             }
         )
         pprint.pprint(self._config_parameter)
@@ -314,9 +318,9 @@ class Radar:
                             }
                         )
                         if self.args["remove_static_noise"]:
-                            detected_object.update(
+                            azimuth_data.update(
                                 {
-                                    "heatMap": self._accumulate_weight(detected_object["heatMap"], mode="azimuth")
+                                    "heatMap": self._accumulate_weight(azimuth_data["heatMap"], mode="azimuth")
                                 }
                             )
                         data_ok = 1
