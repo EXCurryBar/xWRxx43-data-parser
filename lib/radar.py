@@ -22,7 +22,7 @@ def default_kwargs(**default_kwargs_decorator):
 
 
 class Radar:
-    @default_kwargs(remove_static_noise=False)
+    @default_kwargs(remove_static_noise=False, write_file=False)
     def __init__(self, config_file_name, cli_baud_rate: int, data_baud_rate: int, **kwargs):
         """
         :param cli_baud_rate (int): baud rate of the control port
@@ -54,9 +54,10 @@ class Radar:
         # self.fig = plt.figure(figsize=(6, 6))
         # self.ax = plt.subplot(1, 1, 1)  # rows, cols, idx
         # logging things
-        self._wrote_flag = True
-        self._file_name = datetime.today().strftime("%Y-%m-%d-%H%M")
-        self._writer = open(f"./output_file/{self._file_name}.json", 'a', encoding="UTF-8")
+        if self.args["write_file"]:
+            self._wrote_flag = True
+            self._file_name = datetime.today().strftime("%Y-%m-%d-%H%M")
+            self._writer = open(f"./output_file/{self._file_name}.json", 'a', encoding="UTF-8")
 
         # 這個可以更大
         # self.max_buffer_size = 2**10 # 1k
@@ -173,10 +174,14 @@ class Radar:
             if start_index:
                 # print("start_index[0]:"+str(start_index[0]))
                 if start_index[0] > 0:
-                    self.byte_buffer[:self.byte_buffer_length - start_index[0]] = \
-                        self.byte_buffer[start_index[0]:self.byte_buffer_length]
-                    self.byte_buffer_length -= start_index[0]
-                    start_index[0] = 0
+                    try:
+                        self.byte_buffer[:self.byte_buffer_length - start_index[0]] = \
+                            self.byte_buffer[start_index[0]:self.byte_buffer_length]
+                        self.byte_buffer_length -= start_index[0]
+                        start_index[0] = 0
+                    except ValueError:
+                        # TODO fix here
+                        pass
 
                 if self.byte_buffer_length < 0:
                     self.byte_buffer_length = 0
@@ -308,7 +313,12 @@ class Radar:
                                 "heatMap": QQ
                             }
                         )
-
+                        if self.args["remove_static_noise"]:
+                            detected_object.update(
+                                {
+                                    "heatMap": self._accumulate_weight(detected_object["heatMap"], mode="azimuth")
+                                }
+                            )
                         data_ok = 1
 
                     elif tlv_type == demo_uart_msg_range_doppler:
@@ -345,11 +355,20 @@ class Radar:
                         )
                         range_doppler_data.update(
                             {
-                                "range-doppler": range_doppler,
-                                "range-array": range_array,
-                                "doppler-array": doppler_array
+                                "range-doppler": range_doppler.tolist(),
+                                "range-array": range_array.tolist(),
+                                "doppler-array": doppler_array.tolist()
                             }
                         )
+                        if self.args["remove_static_noise"]:
+                            range_doppler_data.update(
+                                {
+                                    "range-doppler": self._accumulate_weight(range_doppler_data["range-doppler"],
+                                                                             mode="doppler",
+                                                                             alpha=0.6,
+                                                                             threshold=200)
+                                }
+                            )
                         data_ok = 1
 
                 if index > 0 and data_ok == 1:
@@ -371,8 +390,9 @@ class Radar:
         return data_ok, frame_number, radar_data
 
     def close_connection(self):
-        self._writer.write("]")
-        self._writer.close()
+        if self.args["write_file"]:
+            self._writer.write("]")
+            self._writer.close()
         self._cli.write("sensorStop\n".encode())
         time.sleep(0.5)
         self._cli.close()
@@ -430,14 +450,6 @@ class Radar:
         plt.clf()
         try:
             if self.args["remove_static_noise"]:
-                heatmap_data.update(
-                    {
-                        "range-doppler": self._accumulate_weight(heatmap_data["range-doppler"],
-                                                                 mode="doppler",
-                                                                 alpha=0.6,
-                                                                 threshold=200)
-                    }
-                )
                 cs = plt.contourf(
                     heatmap_data["range-array"],
                     heatmap_data["doppler-array"],
@@ -474,11 +486,6 @@ class Radar:
     def plot_heat_map(self, detected_object):
         plt.clf()
         if self.args["remove_static_noise"]:
-            detected_object.update(
-                {
-                    "heatMap": self._accumulate_weight(detected_object["heatMap"], mode="azimuth")
-                }
-            )
             cs = plt.contourf(
                 detected_object["posX"],
                 detected_object["posY"],
@@ -497,13 +504,13 @@ class Radar:
         self.fig.canvas.draw()
         plt.pause(0.1)
 
-    @staticmethod
-    def plot_range_profile(range_bins):
-        plt.cla()
-        plt.ylim((0, 10000))
-        plt.xlim((0, 256))
-        plt.plot(range_bins)
-        plt.pause(0.0001)
+    # @staticmethod
+    # def plot_range_profile(range_bins):
+    #     plt.clf()
+    #     plt.ylim((0, 10000))
+    #     plt.xlim((0, 256))
+    #     plt.plot(range_bins)
+    #     plt.pause(0.0001)
 
     @staticmethod
     def _remove_static(detected_object):
