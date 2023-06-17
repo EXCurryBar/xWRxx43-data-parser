@@ -7,17 +7,28 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 from datetime import datetime
-
+import functools
 PLOT_RANGE_IN_CM = 500
 
 
-class Radar:
-    def __init__(self, config_file_name, cli_baud_rate, data_baud_rate):
-        """
+def default_kwargs(**default_kwargs_decorator):
+    def actual_decorator(fn):
+        @functools.wraps(fn)
+        def g(*args, **kwargs):
+            default_kwargs_decorator.update(kwargs)
+            return fn(*args, **default_kwargs_decorator)
+        return g
+    return actual_decorator
 
+
+class Radar:
+    @default_kwargs(remove_static_noise=False)
+    def __init__(self, config_file_name, cli_baud_rate: int, data_baud_rate: int, **kwargs):
+        """
         :param cli_baud_rate (int): baud rate of the control port
         :param data_baud_rate(int): baud rate of the data port
         """
+        self.args = kwargs
         # buffer-ish variable
         self._config = list()
         self._config_parameter = dict()
@@ -25,7 +36,10 @@ class Radar:
         self.xs = list()
         self.ys = list()
         self.zs = list()
-        self.accumulated = np.zeros((16, 128))
+        self.accumulated = {
+            "doppler": np.zeros((16, 128), dtype='float32'),
+            "azimuth": np.zeros((128, 63), dtype='float32')
+        }
 
         # uart things variable
         port = self._read_com_port()
@@ -33,13 +47,12 @@ class Radar:
         self._data = serial.Serial(port["DataPort"], data_baud_rate)
         self._send_config(config_file_name)
         self._parse_config()
-        self.accumulated = np.zeros((128, 63), dtype='float32')
 
         # plotting variable
-        # self.fig = plt.figure()
-        # self.ax = self.fig.add_subplot(111, projection='3d')
-        self.fig = plt.figure(figsize=(6, 6))
-        self.ax = plt.subplot(1, 1, 1)  # rows, cols, idx
+        self.fig = plt.figure()
+        self.ax = self.fig.add_subplot(111, projection='3d')
+        # self.fig = plt.figure(figsize=(6, 6))
+        # self.ax = plt.subplot(1, 1, 1)  # rows, cols, idx
         # logging things
         self._wrote_flag = True
         self._file_name = datetime.today().strftime("%Y-%m-%d-%H%M")
@@ -128,6 +141,7 @@ class Radar:
         data_ok = 0
         frame_number = 0
         detected_object = dict()
+        azimuth_data = dict()
         range_doppler_data = dict()
         range_profile = list()
 
@@ -201,7 +215,6 @@ class Radar:
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
                     if tlv_type == demo_uart_msg_detected_points:
-                        print("demo_uart_msg_detected_points")
                         tlv_num_obj = np.matmul(self.byte_buffer[index:index + 2], word[:2])
                         index += 2
                         tlv_xyz_format = np.matmul(self.byte_buffer[index:index + 2], word[:2])
@@ -250,16 +263,16 @@ class Radar:
                         data_ok = 1
 
                     elif tlv_type == demo_uart_msg_azimuth_static_heat_map:
-                        numTxAzimAnt = 2
-                        numRxAnt = 4
-                        numBytes = numTxAzimAnt * numRxAnt * self._config_parameter["RangeBins"] * 4
+                        num_tx_azim_ant = 2
+                        num_rx_ant = 4
+                        num_bytes = num_tx_azim_ant * num_rx_ant * self._config_parameter["RangeBins"] * 4
 
-                        q = self.byte_buffer[index:index + numBytes]
+                        q = self.byte_buffer[index:index + num_bytes]
 
-                        index += numBytes
-                        qrows = numTxAzimAnt * numRxAnt
-                        qcols = self._config_parameter["RangeBins"] 
-                        NUM_ANGLE_BINS = 64
+                        index += num_bytes
+                        q_rows = num_tx_azim_ant * num_rx_ant
+                        q_cols = self._config_parameter["RangeBins"]
+                        num_angle_bins = 64
 
                         real = q[::4] + q[1::4] * 256
                         imaginary = q[2::4] + q[3::4] * 256
@@ -269,28 +282,28 @@ class Radar:
 
                         q = real + 1j * imaginary
 
-                        q = np.reshape(q, (qrows, qcols), order="F")
+                        q = np.reshape(q, (q_rows, q_cols), order="F")
 
-                        Q = np.fft.fft(q,NUM_ANGLE_BINS,axis=0)
-                        QQ = np.fft.fftshift(abs(Q),axes=0)
+                        Q = np.fft.fft(q, num_angle_bins, axis=0)
+                        QQ = np.fft.fftshift(abs(Q), axes=0)
                         QQ = QQ.T
-                        QQ = QQ[:,1:]
+                        QQ = QQ[:, 1:]
                         QQ = np.fliplr(QQ).tolist()
 
                         theta = np.rad2deg(
-                            np.arcsin(np.array(range(-NUM_ANGLE_BINS//2+1,NUM_ANGLE_BINS//2))*(2/NUM_ANGLE_BINS)))
-                        rangeArray = np.arange(
+                            np.arcsin(np.array(range(-num_angle_bins//2+1, num_angle_bins//2))*(2/num_angle_bins)))
+                        range_array = np.arange(
                             0, self._config_parameter["RangeBins"]) * self._config_parameter["RangeIndexToMeters"]
                         # range1 -= Params.compRxChanCfg.rangeBias
                         # rangeArray = np.maximum(rangeArray, 0)
                         
-                        posX = np.outer(rangeArray.T,np.sin(np.deg2rad(theta)))
-                        posY = np.outer(rangeArray.T,np.cos(np.deg2rad(theta)))
-                        detected_object.update(
+                        pos_x = np.outer(range_array.T, np.sin(np.deg2rad(theta)))
+                        pos_y = np.outer(range_array.T, np.cos(np.deg2rad(theta)))
+                        azimuth_data.update(
                             {
-                                "posX": posX,
-                                "posY": posY,
-                                "range": rangeArray,
+                                "posX": pos_x,
+                                "posY": pos_y,
+                                "range": range_array,
                                 "theta": theta.tolist(),
                                 "heatMap": QQ
                             }
@@ -348,7 +361,14 @@ class Radar:
                     if self.byte_buffer_length < 0:
                         self.byte_buffer_length = 0
 
-        return data_ok, frame_number, detected_object, range_doppler_data, range_profile
+        radar_data = {
+            "3d_scatter": detected_object,
+            "azimuth_heatmap": azimuth_data,
+            "range_doppler": range_doppler_data,
+            "range_profile": range_profile
+        }
+
+        return data_ok, frame_number, radar_data
 
     def close_connection(self):
         self._writer.write("]")
@@ -384,6 +404,8 @@ class Radar:
             }
 
     def plot_3d_scatter(self, detected_object):
+        if self.args["remove_static_noise"]:
+            self._remove_static(detected_object)
         if len(self.length_list) >= 10:  # delay x * 0.04 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
@@ -404,56 +426,72 @@ class Radar:
         plt.draw()
         plt.pause(1 / 30)
 
-    def plot_range_doppler(self, heatmap_data, alpha=0.5, threshold=200):
+    def plot_range_doppler(self, heatmap_data):
         plt.clf()
         try:
-            self.accumulated = heatmap_data["range-doppler"] * alpha + self.accumulated * (1 - alpha)
-            plot_data = heatmap_data["range-doppler"] - self.accumulated
-            for i in range(len(plot_data)):
-                for j in range(len(plot_data[i])):
-                    if plot_data[i][j] < threshold:
-                        plot_data[i][j] = threshold
-            cs = plt.contourf(
-                heatmap_data["range-array"],
-                heatmap_data["doppler-array"],
-                # heatmap_data["range-doppler"],
-                plot_data,
-                cmap='turbo',
-                vmax=1000,
-                vmin=threshold
-            )
+            if self.args["remove_static_noise"]:
+                heatmap_data.update(
+                    {
+                        "range-doppler": self._accumulate_weight(heatmap_data["range-doppler"],
+                                                                 mode="doppler",
+                                                                 alpha=0.6,
+                                                                 threshold=200)
+                    }
+                )
+                cs = plt.contourf(
+                    heatmap_data["range-array"],
+                    heatmap_data["doppler-array"],
+                    heatmap_data["range-doppler"],
+                    vmax=1000,
+                    vmin=200
+                )
+            else:
+                cs = plt.contourf(
+                    heatmap_data["range-array"],
+                    heatmap_data["doppler-array"],
+                    heatmap_data["range-doppler"],
+                )
             self.fig.colorbar(cs)
             self.fig.canvas.draw()
             plt.pause(0.1)
         except KeyError:
             pass
 
-    def accumulate_weight(self, data, alpha=0.7, threshold=400):
+    def _accumulate_weight(self, data, mode, alpha=0.7, threshold=400):
         try:
-            self.accumulated = \
-                self.accumulated * (1 - alpha) + np.array(data["heatMap"], dtype='float32') * alpha
-            plot_data = np.array(data["heatMap"], dtype='float32') - self.accumulated
+            self.accumulated[mode] = \
+                self.accumulated[mode] * (1 - alpha) + np.array(data, dtype='float32') * alpha
+            plot_data = np.array(data, dtype='float32') - self.accumulated[mode]
             for i in range(len(plot_data)):
                 for j in range(len(plot_data[i])):
                     if plot_data[i][j] <= threshold:
                         plot_data[i][j] = threshold
 
-            data.update({"heatMap": plot_data})
+            return plot_data
         except KeyError:
             print("corrupted data")
-            pass
 
     def plot_heat_map(self, detected_object):
         plt.clf()
-        threshold = 400
-        self.accumulate_weight(detected_object, threshold=threshold)
-        cs = plt.contourf(
-            detected_object["posX"],
-            detected_object["posY"],
-            detected_object["heatMap"],
-            vmax=2000,
-            vmin=threshold
-        )
+        if self.args["remove_static_noise"]:
+            detected_object.update(
+                {
+                    "heatMap": self._accumulate_weight(detected_object["heatMap"], mode="azimuth")
+                }
+            )
+            cs = plt.contourf(
+                detected_object["posX"],
+                detected_object["posY"],
+                detected_object["heatMap"],
+                vmax=2000,
+                vmin=400
+            )
+        else:
+            cs = plt.contourf(
+                detected_object["posX"],
+                detected_object["posY"],
+                detected_object["heatMap"],
+            )
         # 绘制热力图
         self.fig.colorbar(cs)
         self.fig.canvas.draw()
@@ -468,7 +506,7 @@ class Radar:
         plt.pause(0.0001)
 
     @staticmethod
-    def remove_static(detected_object):
+    def _remove_static(detected_object):
         motion = detected_object["Doppler"]
         range_index = list(detected_object["RangeIndex"])
         range_value = list(detected_object["Range"])
@@ -487,17 +525,19 @@ class Radar:
             del xs[index]
             del ys[index]
             del zs[index]
-        return {
-            "NumObj": len(range_index),
-            "RangeIndex": range_index,
-            "Range": range_value,
-            "DopplerIndex": doppler_index,
-            "Doppler": motion,
-            "PeakValue": peak,
-            "x": xs,
-            "y": ys,
-            "z": zs
-        }
+        detected_object.update(
+            {
+                "NumObj": len(range_index),
+                "RangeIndex": range_index,
+                "Range": range_value,
+                "DopplerIndex": doppler_index,
+                "Doppler": motion,
+                "PeakValue": peak,
+                "x": xs,
+                "y": ys,
+                "z": zs
+            }
+        )
 
     def write_to_json(self, detected_object: dict):
         for key, values in detected_object.items():

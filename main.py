@@ -10,14 +10,15 @@ DATA_BAUD = 921600
 
 
 if __name__ == '__main__':
-    radar = Radar("heatmap.cfg", CLI_BAUD, DATA_BAUD)
+    radar = Radar("scatterrange.cfg", CLI_BAUD, DATA_BAUD, remove_static_noise=True)
     while True:
         try:
-            data_ok, frame_number, detected_object, range_doppler_data, range_profile = radar.parse_data()
+            data_ok, frame_number, radar_data = radar.parse_data()
             if data_ok:
-                # radar.write_to_json(detObj, range_bin)
-                radar.plot_heat_map(detected_object)
-            # sleep(1/5)
+                radar.plot_3d_scatter(radar_data["3d_scatter"])
+                # radar.plot_range_doppler(radar_data["range_doppler"])
+                # radar.plot_heat_map(radar_data["azimuth_heatmap"])
+
         except KeyboardInterrupt or SerialException:
             # if ^C pressed
             radar.close_connection()
