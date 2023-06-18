@@ -195,8 +195,6 @@ class Radar:
                 # print("total_packet_length:"+str(total_packet_length))
                 if (self.byte_buffer_length >= total_packet_length) and (self.byte_buffer_length != 0):
                     magic_ok = 1
-                # else:
-                #     print("magic_not_OK")
             if magic_ok:
                 # return True, True, True
                 index = 0
@@ -263,6 +261,8 @@ class Radar:
                                 "z": z.tolist()
                             }
                         )
+                        if self.args["remove_static_noise"]:
+                            self._remove_static(detected_object)
                         data_ok = 1
 
                     elif tlv_type == demo_uart_msg_range_profile:
@@ -313,7 +313,7 @@ class Radar:
                                 "posX": pos_x,
                                 "posY": pos_y,
                                 "range": range_array,
-                                "theta": theta.tolist(),
+                                "theta": theta,
                                 "heatMap": QQ
                             }
                         )
@@ -359,9 +359,9 @@ class Radar:
                         )
                         range_doppler_data.update(
                             {
-                                "range-doppler": range_doppler.tolist(),
-                                "range-array": range_array.tolist(),
-                                "doppler-array": doppler_array.tolist()
+                                "range-doppler": range_doppler,
+                                "range-array": range_array,
+                                "doppler-array": doppler_array
                             }
                         )
                         if self.args["remove_static_noise"]:
@@ -390,7 +390,8 @@ class Radar:
             "range_doppler": range_doppler_data,
             "range_profile": range_profile
         }
-
+        if self.args["write_file"] and data_ok:
+            self.write_to_json(radar_data)
         return data_ok, frame_number, radar_data
 
     def close_connection(self):
@@ -428,27 +429,28 @@ class Radar:
             }
 
     def plot_3d_scatter(self, detected_object):
-        if self.args["remove_static_noise"]:
-            self._remove_static(detected_object)
-        if len(self.length_list) >= 10:  # delay x * 0.04 s
-            self.xs = self.xs[self.length_list[0]:]
-            self.ys = self.ys[self.length_list[0]:]
-            self.zs = self.zs[self.length_list[0]:]
-            self.length_list.pop(0)
-        self.ax.cla()
-        self.length_list.append(len(detected_object["x"]))
-        self.xs += list(detected_object["x"])
-        self.ys += list(detected_object["y"])
-        self.zs += list(detected_object["z"])
-        self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
-        self.ax.set_xlabel('X(cm)')
-        self.ax.set_ylabel('range (cm)')
-        self.ax.set_zlabel('elevation (cm)')
-        self.ax.set_xlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
-        self.ax.set_ylim(0, PLOT_RANGE_IN_CM)
-        self.ax.set_zlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
-        plt.draw()
-        plt.pause(1 / 30)
+        if len(detected_object) == 0:   # TODO find out how this happened
+            pass
+        else:
+            if len(self.length_list) >= 10:  # delay x * 0.04 s
+                self.xs = self.xs[self.length_list[0]:]
+                self.ys = self.ys[self.length_list[0]:]
+                self.zs = self.zs[self.length_list[0]:]
+                self.length_list.pop(0)
+            self.ax.cla()
+            self.length_list.append(len(detected_object["x"]))
+            self.xs += list(detected_object["x"])
+            self.ys += list(detected_object["y"])
+            self.zs += list(detected_object["z"])
+            self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
+            self.ax.set_xlabel('X(cm)')
+            self.ax.set_ylabel('range (cm)')
+            self.ax.set_zlabel('elevation (cm)')
+            self.ax.set_xlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
+            self.ax.set_ylim(0, PLOT_RANGE_IN_CM)
+            self.ax.set_zlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
+            plt.draw()
+            plt.pause(1 / 30)
 
     def plot_range_doppler(self, heatmap_data):
         plt.clf()
@@ -550,12 +552,17 @@ class Radar:
             }
         )
 
-    def write_to_json(self, detected_object: dict):
-        for key, values in detected_object.items():
-            detected_object[key] = values.tolist()
-        new_line = json.dumps(detected_object)
+    def write_to_json(self, radar_data: dict):
+        new_line = json.dumps(radar_data, cls=NumpyArrayEncoder)
         if self._wrote_flag:
-            self._writer.write(f"[[{new_line}]")
+            self._writer.write(f"[[{time.time()}, {new_line}]")
             self._wrote_flag = False
         else:
-            self._writer.write(f",\n[{new_line}]")
+            self._writer.write(f",\n[{time.time()}, {new_line}]")
+
+
+class NumpyArrayEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
