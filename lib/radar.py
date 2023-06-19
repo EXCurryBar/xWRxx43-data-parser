@@ -408,9 +408,9 @@ class Radar:
         if sys.platform == "win32" or sys.platform == "cygwin":
             ports = serial.tools.list_ports.comports(include_links=False)
             for port in ports:
-                if "XDS110 Class Auxiliary Data Port" in port.description:
+                if "Enhanced COM Port" in port.description:
                     data_port = port.name
-                elif "XDS110 Class Application/User" in port.description:
+                elif "Standard COM Port" in port.description:
                     cli_port = port.name
 
             if not data_port or not cli_port:
