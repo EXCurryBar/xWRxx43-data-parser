@@ -4,23 +4,24 @@ import os
 from tqdm import trange
 import numpy as np
 
-accumulated = np.zeros((16,128))
+prev = dict()
 fig = plt.figure()
+
 
 def plot_range_doppler(heatmap_data):
     plt.clf()
-    accumulated = heatmap_data["range-doppler"]*0.7 + accumulated*0.3
-    plot_data = heatmap_data["range-doppler"] - accumulated
-    cs = plt.contourf(
-        np.array(heatmap_data["range-array"], dtype="float32"),
-        np.array(heatmap_data["doppler-array"], dtype="float32"),
-        np.array(plot_data, dtype="float32"),
-        cmap='turbo',
-        vmax=1000,
-        vmin=0
-    )
-    fig.colorbar(cs)
-    fig.canvas.draw()
+    try:
+        cs = plt.contourf(
+            heatmap_data["range-array"],
+            heatmap_data["doppler-array"],
+            heatmap_data["range-doppler"],
+            # vmax=1000,
+            # vmin=200
+        )
+        fig.colorbar(cs)
+        fig.canvas.draw()
+    except KeyError:
+        pass
 
 
 if __name__ == "__main__":
@@ -32,8 +33,9 @@ if __name__ == "__main__":
     choice = int(input("file number:"))
 
     rows = json.load(open(f"output_file/{files[choice]}", 'r'))
-    print(rows)
     for i in trange(len(rows) - 1):
-        plot_range_doppler(rows[i][1])
+        if len(rows[i][1]["range_doppler"]) == 0:
+            continue
+        plot_range_doppler(rows[i][1]["range_doppler"])
         plt.pause(rows[i+1][0] - rows[i][0])
 

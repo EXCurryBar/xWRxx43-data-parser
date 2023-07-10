@@ -11,19 +11,24 @@ zs = list()
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 
-PLOT_RANGE_IN_CM = 500
+PLOT_RANGE_IN_CM = 600
+
+
+def analyze_scatter(detected_object):
+
+    pass
 
 
 def plot_3d_scatter(detected_object):
     global xs, ys, zs
-    if len(length_list) >= 10:  # clear every X*0.04 s
+    if len(length_list) >= 10:  # clear every X*0.033 s
         xs = xs[length_list[0]:]
         ys = ys[length_list[0]:]
         zs = zs[length_list[0]:]
         length_list.pop(0)
     ax.cla()
     length_list.append(detected_object["NumObj"])
-    xs += detected_object["x"]
+    xs += detected_object["x"]   
     ys += detected_object["y"]
     zs += detected_object["z"]
     ax.scatter(xs, ys, zs, c='r', marker='o', label="Radar Data")
@@ -45,5 +50,5 @@ choice = int(input("file number:"))
 rows = json.load(open(f"output_file/{files[choice]}", 'r'))
 
 for i in trange(len(rows) - 1):
-    plot_3d_scatter(rows[i][1])
+    plot_3d_scatter(rows[i][1]["3d_scatter"])
     plt.pause(rows[i+1][0] - rows[i][0])
