@@ -149,6 +149,7 @@ class Radar:
         azimuth_data = dict()
         range_doppler_data = dict()
         range_profile = list()
+        radar_data = dict()
 
         # 讀資料
         read_buffer = self._data.read(self._data.in_waiting)
@@ -195,8 +196,8 @@ class Radar:
                 # print("total_packet_length:"+str(total_packet_length))
                 if (self.byte_buffer_length >= total_packet_length) and (self.byte_buffer_length != 0):
                     magic_ok = 1
-                # else:
-                #     print("magic_not_OK")
+                else:
+                    print("magic_not_OK")
             if magic_ok:
                 # return True, True, True
                 index = 0
@@ -215,9 +216,8 @@ class Radar:
                 num_detected_object = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
                 tlv_types = np.matmul(self.byte_buffer[index:index + 4], word)
-                index += 4
-                # print("frame_number:" + str(frame_number))
-
+                index += 8
+                print("frame_number:" + str(frame_number))
                 for _ in range(tlv_types):
                     tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
@@ -377,9 +377,12 @@ class Radar:
 
                 if index > 0 and data_ok == 1:
                     shift_index = index
-                    self.byte_buffer[:self.byte_buffer_length - shift_index] = \
-                        self.byte_buffer[shift_index:self.byte_buffer_length]
-                    self.byte_buffer_length -= shift_index
+                    try:
+                        self.byte_buffer[:self.byte_buffer_length - shift_index] = \
+                            self.byte_buffer[shift_index:self.byte_buffer_length]
+                        self.byte_buffer_length -= shift_index
+                    except ValueError:
+                        pass
 
                     if self.byte_buffer_length < 0:
                         self.byte_buffer_length = 0
@@ -409,9 +412,9 @@ class Radar:
             ports = serial.tools.list_ports.comports(include_links=False)
             for port in ports:
                 if "Enhanced COM Port" in port.description:
-                    data_port = port.name
-                elif "Standard COM Port" in port.description:
                     cli_port = port.name
+                elif "Standard COM Port" in port.description:
+                    data_port = port.name
 
             if not data_port or not cli_port:
                 input("please connect the radar and press Enter...")
