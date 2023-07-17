@@ -7,7 +7,7 @@ DATA_BAUD = 921600
 
 
 if __name__ == '__main__':
-    radar = Radar("scatterrange.cfg", CLI_BAUD, DATA_BAUD, remove_static_noise=True, write_file=True)
+    radar = Radar("scatterrange.cfg", CLI_BAUD, DATA_BAUD, remove_static_noise=True, write_file=False)
     while True:
         try:
             data_ok, frame_number, radar_data = radar.parse_data()

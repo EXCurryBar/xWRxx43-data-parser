@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 import functools
-PLOT_RANGE_IN_CM = 1000
+from sklearn.cluster import HDBSCAN
+PLOT_RANGE_IN_CM = 600
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -432,7 +433,7 @@ class Radar:
         if len(detected_object) == 0:   # TODO find out how this happened
             pass
         else:
-            if len(self.length_list) >= 10:  # delay x * 0.04 s
+            if len(self.length_list) >= 0.5/0.033:  # delay x * 0.033 s
                 self.xs = self.xs[self.length_list[0]:]
                 self.ys = self.ys[self.length_list[0]:]
                 self.zs = self.zs[self.length_list[0]:]
@@ -442,7 +443,15 @@ class Radar:
             self.xs += list(detected_object["x"])
             self.ys += list(detected_object["y"])
             self.zs += list(detected_object["z"])
-            self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
+
+            top_down = np.array([item for item in zip(self.ys, self.xs)])
+            if len(top_down) > 2:
+                cluster = HDBSCAN(min_cluster_size=3).fit(top_down)
+                color = cluster.labels_
+            else:
+                color = 'r'
+
+            self.ax.scatter(self.xs, self.ys, self.zs, c=color, marker='o', label="Radar Data")
             self.ax.set_xlabel('X(cm)')
             self.ax.set_ylabel('range (cm)')
             self.ax.set_zlabel('elevation (cm)')
