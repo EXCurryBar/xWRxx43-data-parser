@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 import functools
-PLOT_RANGE_IN_CM = 1000
+PLOT_RANGE_IN_CM = 600
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -155,16 +155,10 @@ class Radar:
         read_buffer = self._data.read(self._data.in_waiting)
         byte_vector = np.frombuffer(read_buffer, dtype='uint8')
         byte_count = len(byte_vector)
-        # print("byte_buffer_length:"+str(self.byte_buffer_length))
-
         if (self.byte_buffer_length + byte_count) < self.max_buffer_size:
-            # 確認讀進來的資料比buffer小
             self.byte_buffer[self.byte_buffer_length:self.byte_buffer_length + byte_count] = byte_vector[:byte_count]
             self.byte_buffer_length += byte_count
-        else:
-            # TODO error handle
-            pass
-
+        # print(self.byte_buffer)
         if self.byte_buffer_length > 16:
             # possible_location = np.where(byte_vector == magic_word[0])[0]
             possible_location = np.where(self.byte_buffer == magic_word[0])[0]
@@ -178,7 +172,8 @@ class Radar:
 
             if start_index:
                 # print("start_index[0]:"+str(start_index[0]))
-                if start_index[0] > 0:
+                if 0 < start_index[0] < self.byte_buffer_length:
+                # if start_index[0] > 0:
                     try:
                         self.byte_buffer[:self.byte_buffer_length - start_index[0]] = \
                             self.byte_buffer[start_index[0]:self.byte_buffer_length]
@@ -196,8 +191,8 @@ class Radar:
                 # print("total_packet_length:"+str(total_packet_length))
                 if (self.byte_buffer_length >= total_packet_length) and (self.byte_buffer_length != 0):
                     magic_ok = 1
-                else:
-                    print("magic_not_OK")
+                # else:
+            # print(f"magic OK: {magic_ok}")
             if magic_ok:
                 # return True, True, True
                 index = 0
@@ -217,31 +212,31 @@ class Radar:
                 index += 4
                 tlv_types = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 8
-                print("frame_number:" + str(frame_number))
+
                 for _ in range(tlv_types):
+                    # print(self.byte_buffer[index:index + 4])
                     tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
                     if tlv_type == demo_uart_msg_detected_points:
                         tlv_num_obj = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                        # print("tlv_num_obj:", tlv_num_obj)
                         index += 2
                         tlv_xyz_format = np.matmul(self.byte_buffer[index:index + 2], word[:2])
                         index += 2
-
-                        range_index = np.zeros(tlv_num_obj, dtype='int16')
-                        doppler_index = np.zeros(tlv_num_obj, dtype='int16')
-                        peak_value = np.zeros(tlv_num_obj, dtype='int16')
-                        x = np.zeros(tlv_num_obj, dtype='int16')
-                        y = np.zeros(tlv_num_obj, dtype='int16')
-                        z = np.zeros(tlv_num_obj, dtype='int16')
+                        range_index = np.zeros(num_detected_object, dtype='int16')
+                        doppler_index = np.zeros(num_detected_object, dtype='int16')
+                        peak_value = np.zeros(num_detected_object, dtype='int16')
+                        x = np.zeros(num_detected_object, dtype='int16')
+                        y = np.zeros(num_detected_object, dtype='int16')
+                        z = np.zeros(num_detected_object, dtype='int16')
 
                         param_list = [range_index, doppler_index, peak_value, x, y, z]
-                        for i in range(tlv_num_obj):
+                        for i in range(num_detected_object):
                             for item in param_list:
                                 item[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
                                 index += 2
-
                         range_value = range_index * self._config_parameter["RangeIndexToMeters"]
                         doppler_index[doppler_index > (self._config_parameter["DopplerBins"] / 2 - 1)] = \
                             doppler_index[doppler_index > (self._config_parameter["DopplerBins"] / 2 - 1)] - 65535
@@ -249,10 +244,10 @@ class Radar:
                         x = x / tlv_xyz_format
                         y = y / tlv_xyz_format
                         z = z / tlv_xyz_format
-
+                        print(len(x), end='\r')
                         detected_object.update(
                             {
-                                "NumObj": tlv_num_obj.tolist(),
+                                "NumObj": num_detected_object.tolist(),
                                 "RangeIndex": range_index.tolist(),
                                 "Range": range_value.tolist(),
                                 "DopplerIndex": doppler_index.tolist(),
@@ -263,6 +258,7 @@ class Radar:
                                 "z": z.tolist()
                             }
                         )
+
                         data_ok = 1
 
                     elif tlv_type == demo_uart_msg_range_profile:
@@ -393,7 +389,7 @@ class Radar:
             "range_doppler": range_doppler_data,
             "range_profile": range_profile
         }
-
+        self.write_to_json(radar_data)
         return data_ok, frame_number, radar_data
 
     def close_connection(self):
