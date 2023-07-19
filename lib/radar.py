@@ -1,3 +1,4 @@
+import os
 import pprint
 import sys
 import serial
@@ -212,19 +213,20 @@ class Radar:
                 index += 4
                 tlv_types = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 8
-
+                # print(index)
+                print("====================================")
                 for _ in range(tlv_types):
-                    # print(self.byte_buffer[index:index + 4])
                     tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
+                    # print("tlv_type:", tlv_type)
                     index += 4
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
+
                     if tlv_type == demo_uart_msg_detected_points:
-                        tlv_num_obj = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                        # print("tlv_num_obj:", tlv_num_obj)
-                        index += 2
-                        tlv_xyz_format = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                        index += 2
+                        # tlv_num_obj = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                        # index += 2
+                        # tlv_xyz_format = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                        # index += 2
                         range_index = np.zeros(num_detected_object, dtype='int16')
                         doppler_index = np.zeros(num_detected_object, dtype='int16')
                         peak_value = np.zeros(num_detected_object, dtype='int16')
@@ -241,10 +243,9 @@ class Radar:
                         doppler_index[doppler_index > (self._config_parameter["DopplerBins"] / 2 - 1)] = \
                             doppler_index[doppler_index > (self._config_parameter["DopplerBins"] / 2 - 1)] - 65535
                         doppler_value = doppler_index * self._config_parameter["DopplerResolution"]
-                        x = x / tlv_xyz_format
-                        y = y / tlv_xyz_format
-                        z = z / tlv_xyz_format
-                        print(len(x), end='\r')
+                        # x = x / tlv_xyz_format
+                        # y = y / tlv_xyz_format
+                        # z = z / tlv_xyz_format
                         detected_object.update(
                             {
                                 "NumObj": num_detected_object.tolist(),
@@ -258,118 +259,13 @@ class Radar:
                                 "z": z.tolist()
                             }
                         )
-
+                        pprint.pprint(detected_object)
                         data_ok = 1
-
-                    elif tlv_type == demo_uart_msg_range_profile:
-                        num_bytes = 2 * self._config_parameter["RangeBins"]
-                        range_profile = self.byte_buffer[index:index + num_bytes].view(dtype='int16')
-                        index += tlv_length
-                        data_ok = 1
-
-                    elif tlv_type == demo_uart_msg_azimuth_static_heat_map:
-                        num_tx_azim_ant = 2
-                        num_rx_ant = 4
-                        num_bytes = num_tx_azim_ant * num_rx_ant * self._config_parameter["RangeBins"] * 4
-
-                        q = self.byte_buffer[index:index + num_bytes]
-
-                        index += num_bytes
-                        q_rows = num_tx_azim_ant * num_rx_ant
-                        q_cols = self._config_parameter["RangeBins"]
-                        num_angle_bins = 64
-
-                        real = q[::4] + q[1::4] * 256
-                        imaginary = q[2::4] + q[3::4] * 256
-
-                        real = real.astype(np.int16)
-                        imaginary = imaginary.astype(np.int16)
-
-                        q = real + 1j * imaginary
-
-                        q = np.reshape(q, (q_rows, q_cols), order="F")
-
-                        Q = np.fft.fft(q, num_angle_bins, axis=0)
-                        QQ = np.fft.fftshift(abs(Q), axes=0)
-                        QQ = QQ.T
-                        QQ = QQ[:, 1:]
-                        QQ = np.fliplr(QQ).tolist()
-
-                        theta = np.rad2deg(
-                            np.arcsin(np.array(range(-num_angle_bins//2+1, num_angle_bins//2))*(2/num_angle_bins)))
-                        range_array = np.arange(
-                            0, self._config_parameter["RangeBins"]) * self._config_parameter["RangeIndexToMeters"]
-                        # range1 -= Params.compRxChanCfg.rangeBias
-                        # rangeArray = np.maximum(rangeArray, 0)
-                        
-                        pos_x = np.outer(range_array.T, np.sin(np.deg2rad(theta)))
-                        pos_y = np.outer(range_array.T, np.cos(np.deg2rad(theta)))
-                        azimuth_data.update(
-                            {
-                                "posX": pos_x,
-                                "posY": pos_y,
-                                "range": range_array,
-                                "theta": theta.tolist(),
-                                "heatMap": QQ
-                            }
-                        )
-                        if self.args["remove_static_noise"]:
-                            azimuth_data.update(
-                                {
-                                    "heatMap": self._accumulate_weight(azimuth_data["heatMap"], mode="azimuth")
-                                }
-                            )
-                        data_ok = 1
-
-                    elif tlv_type == demo_uart_msg_range_doppler:
-                        num_bytes = 2 * self._config_parameter["RangeBins"] * self._config_parameter["DopplerBins"]
-
-                        payload = self.byte_buffer[index:index + num_bytes]
-                        index += num_bytes
-                        range_doppler = payload.view(dtype=np.int16)
-
-                        if np.max(range_doppler) > 10000:
-                            continue
-
-                        range_doppler = np.reshape(
-                            range_doppler,
-                            (self._config_parameter["DopplerBins"], self._config_parameter["RangeBins"]),
-                            'F'
-                        )
-
-                        range_doppler = np.append(
-                            range_doppler[int(len(range_doppler) / 2):],
-                            range_doppler[:int(len(range_doppler) / 2)],
-                            axis=0
-                        )
-
-                        range_array = np.array(
-                            range(self._config_parameter["RangeBins"])) * self._config_parameter["RangeIndexToMeters"]
-
-                        doppler_array = np.multiply(
-                            np.arange(
-                                -self._config_parameter["DopplerBins"] / 2,
-                                self._config_parameter["DopplerBins"] / 2
-                            ),
-                            self._config_parameter["DopplerResolution"]
-                        )
-                        range_doppler_data.update(
-                            {
-                                "range-doppler": range_doppler.tolist(),
-                                "range-array": range_array.tolist(),
-                                "doppler-array": doppler_array.tolist()
-                            }
-                        )
-                        if self.args["remove_static_noise"]:
-                            range_doppler_data.update(
-                                {
-                                    "range-doppler": self._accumulate_weight(range_doppler_data["range-doppler"],
-                                                                             mode="doppler",
-                                                                             alpha=0.6,
-                                                                             threshold=200)
-                                }
-                            )
-                        data_ok = 1
+                    # elif tlv_type == demo_uart_msg_range_profile:
+                    #     num_bytes = 2 * self._config_parameter["RangeBins"]
+                    #     range_profile = self.byte_buffer[index:index + num_bytes].view(dtype='int16')
+                    #     index += tlv_length
+                    #     data_ok = 1
 
                 if index > 0 and data_ok == 1:
                     shift_index = index
@@ -389,7 +285,8 @@ class Radar:
             "range_doppler": range_doppler_data,
             "range_profile": range_profile
         }
-        self.write_to_json(radar_data)
+        if self.args["write_file"] and data_ok:
+            self.write_to_json(radar_data)
         return data_ok, frame_number, radar_data
 
     def close_connection(self):
@@ -549,12 +446,17 @@ class Radar:
             }
         )
 
-    def write_to_json(self, detected_object: dict):
-        for key, values in detected_object.items():
-            detected_object[key] = values.tolist()
-        new_line = json.dumps(detected_object)
+    def write_to_json(self, radar_data: dict):
+        new_line = json.dumps(radar_data, cls=NumpyArrayEncoder)
         if self._wrote_flag:
-            self._writer.write(f"[[{new_line}]")
+            self._writer.write(f"[[{time.time()}, {new_line}]")
             self._wrote_flag = False
         else:
-            self._writer.write(f",\n[{new_line}]")
+            self._writer.write(f",\n[{time.time()}, {new_line}]")
+
+
+class NumpyArrayEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
