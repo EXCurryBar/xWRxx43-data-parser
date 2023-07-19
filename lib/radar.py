@@ -215,52 +215,42 @@ class Radar:
                 index += 8
                 # print(index)
                 print("====================================")
+                print("frame_number:", frame_number)
+                print("num_detected_object:", num_detected_object)
                 for _ in range(tlv_types):
+
                     tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
-                    # print("tlv_type:", tlv_type)
+                    print("tlv_type:", tlv_type)
                     index += 4
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
-
+                    print("tlv_length: ", tlv_length)
                     if tlv_type == demo_uart_msg_detected_points:
-                        # tlv_num_obj = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                        # index += 2
-                        # tlv_xyz_format = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                        # index += 2
-                        range_index = np.zeros(num_detected_object, dtype='int16')
-                        doppler_index = np.zeros(num_detected_object, dtype='int16')
-                        peak_value = np.zeros(num_detected_object, dtype='int16')
-                        x = np.zeros(num_detected_object, dtype='int16')
-                        y = np.zeros(num_detected_object, dtype='int16')
-                        z = np.zeros(num_detected_object, dtype='int16')
+                        x = np.zeros(num_detected_object, dtype='float')
+                        y = np.zeros(num_detected_object, dtype='float')
+                        z = np.zeros(num_detected_object, dtype='float')
+                        v = np.zeros(num_detected_object, dtype='float')
 
-                        param_list = [range_index, doppler_index, peak_value, x, y, z]
+                        param_list = [x, y, z, v]
                         for i in range(num_detected_object):
                             for item in param_list:
-                                item[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                                index += 2
-                        range_value = range_index * self._config_parameter["RangeIndexToMeters"]
-                        doppler_index[doppler_index > (self._config_parameter["DopplerBins"] / 2 - 1)] = \
-                            doppler_index[doppler_index > (self._config_parameter["DopplerBins"] / 2 - 1)] - 65535
-                        doppler_value = doppler_index * self._config_parameter["DopplerResolution"]
-                        # x = x / tlv_xyz_format
-                        # y = y / tlv_xyz_format
-                        # z = z / tlv_xyz_format
+                                item[i] = np.matmul(self.byte_buffer[index:index + 4], word)
+                                index += 4
+
                         detected_object.update(
                             {
-                                "NumObj": num_detected_object.tolist(),
-                                "RangeIndex": range_index.tolist(),
-                                "Range": range_value.tolist(),
-                                "DopplerIndex": doppler_index.tolist(),
-                                "Doppler": doppler_value.tolist(),
-                                "PeakValue": peak_value.tolist(),
-                                "x": x.tolist(),
-                                "y": y.tolist(),
-                                "z": z.tolist()
+                                "NumObj": num_detected_object,
+                                "x": x,
+                                "y": y,
+                                "z": z,
+                                "v": v
                             }
                         )
                         pprint.pprint(detected_object)
                         data_ok = 1
+
+                    else:
+                        index += tlv_length
                     # elif tlv_type == demo_uart_msg_range_profile:
                     #     num_bytes = 2 * self._config_parameter["RangeBins"]
                     #     range_profile = self.byte_buffer[index:index + num_bytes].view(dtype='int16')
