@@ -1,6 +1,9 @@
 import os
 import pprint
 import sys
+import codecs
+import binascii
+import struct
 import serial
 import serial.tools.list_ports
 import time
@@ -9,7 +12,7 @@ import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 import functools
-PLOT_RANGE_IN_CM = 600
+PLOT_RANGE_IN_CM = 6
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -134,7 +137,7 @@ class Radar:
     def parse_data(self):
         # header.version
         word = [1, 2 ** 8, 2 ** 16, 2 ** 24]
-
+        word_big = [2**24, 2**16, 2**8, 1]
         object_struct_size = 12
         byte_vector_acc_max_size = 2 ** 15
         demo_uart_msg_detected_points = 1
@@ -174,7 +177,6 @@ class Radar:
             if start_index:
                 # print("start_index[0]:"+str(start_index[0]))
                 if 0 < start_index[0] < self.byte_buffer_length:
-                # if start_index[0] > 0:
                     try:
                         self.byte_buffer[:self.byte_buffer_length - start_index[0]] = \
                             self.byte_buffer[start_index[0]:self.byte_buffer_length]
@@ -195,7 +197,6 @@ class Radar:
                 # else:
             # print(f"magic OK: {magic_ok}")
             if magic_ok:
-                # return True, True, True
                 index = 0
                 magic_number = self.byte_buffer[index:index + 8]
                 index += 8
@@ -213,30 +214,31 @@ class Radar:
                 index += 4
                 tlv_types = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 8
-                # print(index)
-                print("====================================")
-                print("frame_number:", frame_number)
-                print("num_detected_object:", num_detected_object)
+                # print("====================================")
+                # print("frame_number:", frame_number)
+                # print("num_detected_object:", num_detected_object)
                 for _ in range(tlv_types):
-
-                    tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
-                    print("tlv_type:", tlv_type)
+                    try:
+                        tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
+                    except ValueError:
+                        continue
+                    # print("tlv_type:", tlv_type)
                     index += 4
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
-                    print("tlv_length: ", tlv_length)
+                    # print("tlv_length: ", tlv_length)
                     if tlv_type == demo_uart_msg_detected_points:
-                        x = np.zeros(num_detected_object, dtype='float')
-                        y = np.zeros(num_detected_object, dtype='float')
-                        z = np.zeros(num_detected_object, dtype='float')
-                        v = np.zeros(num_detected_object, dtype='float')
-
+                        x = []*num_detected_object
+                        y = []*num_detected_object
+                        z = []*num_detected_object
+                        v = []*num_detected_object
                         param_list = [x, y, z, v]
                         for i in range(num_detected_object):
                             for item in param_list:
-                                item[i] = np.matmul(self.byte_buffer[index:index + 4], word)
+                                # print(np.matmul(self.byte_buffer[index:index + 4], word))
+                                # item[i] = np.matmul(self.byte_buffer[index:index + 4], word)
+                                item.append(struct.unpack('<f', codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0])
                                 index += 4
-
                         detected_object.update(
                             {
                                 "NumObj": num_detected_object,
@@ -246,18 +248,17 @@ class Radar:
                                 "v": v
                             }
                         )
-                        pprint.pprint(detected_object)
+                        # pprint.pprint(detected_object)
                         data_ok = 1
-
+                    elif tlv_type == demo_uart_msg_range_profile:
+                        range_profile = np.zeros(self._config_parameter["RangeBins"], dtype="int16")
+                        for i in range(self._config_parameter["RangeBins"]):
+                            range_profile[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
+                            index += 2
                     else:
                         index += tlv_length
-                    # elif tlv_type == demo_uart_msg_range_profile:
-                    #     num_bytes = 2 * self._config_parameter["RangeBins"]
-                    #     range_profile = self.byte_buffer[index:index + num_bytes].view(dtype='int16')
-                    #     index += tlv_length
-                    #     data_ok = 1
-
-                if index > 0 and data_ok == 1:
+                    # print("---------------------")
+                if index > 0:
                     shift_index = index
                     try:
                         self.byte_buffer[:self.byte_buffer_length - shift_index] = \
@@ -316,7 +317,7 @@ class Radar:
     def plot_3d_scatter(self, detected_object):
         if self.args["remove_static_noise"]:
             self._remove_static(detected_object)
-        if len(self.length_list) >= 10:  # delay x * 0.04 s
+        if len(self.length_list) >= 10:  # delay x * 0.033 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
@@ -327,9 +328,9 @@ class Radar:
         self.ys += list(detected_object["y"])
         self.zs += list(detected_object["z"])
         self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
-        self.ax.set_xlabel('X(cm)')
-        self.ax.set_ylabel('range (cm)')
-        self.ax.set_zlabel('elevation (cm)')
+        self.ax.set_xlabel('X(m)')
+        self.ax.set_ylabel('range (m)')
+        self.ax.set_zlabel('elevation (m)')
         self.ax.set_xlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
         self.ax.set_ylim(0, PLOT_RANGE_IN_CM)
         self.ax.set_zlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
@@ -358,6 +359,15 @@ class Radar:
             plt.pause(0.1)
         except KeyError:
             pass
+
+    @staticmethod
+    def plot_range_profile(range_profile_data):
+        plt.cla()
+        plt.plot(range_profile_data)
+        plt.ylim(0, 5000)
+        plt.xlim(0, 256)
+        plt.draw()
+        plt.pause(1 / 30)
 
     def _accumulate_weight(self, data, mode, alpha=0.7, threshold=400):
         try:
@@ -404,32 +414,20 @@ class Radar:
 
     @staticmethod
     def _remove_static(detected_object):
-        motion = detected_object["Doppler"]
-        range_index = list(detected_object["RangeIndex"])
-        range_value = list(detected_object["Range"])
-        doppler_index = list(detected_object["DopplerIndex"])
-        peak = list(detected_object["PeakValue"])
+        motion = list(detected_object["v"])
         xs = list(detected_object["x"])
         ys = list(detected_object["y"])
         zs = list(detected_object["z"])
         static_index = [i for i in range(len(motion)) if motion[i] == 0]
         for index in sorted(static_index, reverse=True):
             del motion[index]
-            del range_index[index]
-            del range_value[index]
-            del doppler_index[index]
-            del peak[index]
             del xs[index]
             del ys[index]
             del zs[index]
         detected_object.update(
             {
-                "NumObj": len(range_index),
-                "RangeIndex": range_index,
-                "Range": range_value,
-                "DopplerIndex": doppler_index,
-                "Doppler": motion,
-                "PeakValue": peak,
+                "NumObj": len(motion),
+                "v": motion,
                 "x": xs,
                 "y": ys,
                 "z": zs
