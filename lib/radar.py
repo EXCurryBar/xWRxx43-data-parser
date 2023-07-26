@@ -228,21 +228,23 @@ class Radar:
                     index += 4
                     # print("tlv_length: ", tlv_length)
                     if tlv_type == demo_uart_msg_detected_points:
-                        x = []*num_detected_object
-                        y = []*num_detected_object
-                        z = []*num_detected_object
-                        v = []*num_detected_object
+                        x = np.zeros(num_detected_object, dtype="float")
+                        y = np.zeros(num_detected_object, dtype="float")
+                        z = np.zeros(num_detected_object, dtype="float")
+                        v = np.zeros(num_detected_object, dtype="float")
                         param_list = [x, y, z, v]
                         for i in range(num_detected_object):
                             for item in param_list:
                                 # print(np.matmul(self.byte_buffer[index:index + 4], word))
                                 # item[i] = np.matmul(self.byte_buffer[index:index + 4], word)
-                                item.append(struct.unpack('<f', codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0])
+                                item[i] = struct.unpack(
+                                        '<f',
+                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
                                 index += 4
                         detected_object.update(
                             {
                                 "NumObj": num_detected_object,
-                                "x": x,
+                                "x": -x,
                                 "y": y,
                                 "z": z,
                                 "v": v
