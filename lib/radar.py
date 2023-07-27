@@ -140,16 +140,21 @@ class Radar:
         word_big = [2**24, 2**16, 2**8, 1]
         object_struct_size = 12
         byte_vector_acc_max_size = 2 ** 15
-        demo_uart_msg_detected_points = 1
-        demo_uart_msg_range_profile = 2
-        demo_uart_msg_azimuth_static_heat_map = 4
-        demo_uart_msg_range_doppler = 5
+        area_scanner_dynamic_points = 1
+        area_scanner_static_points = 8
+        area_scanner_track_object_list = 10
+        area_scanner_tracking_id = 11
         magic_word = [2, 1, 4, 3, 6, 5, 8, 7]
 
         magic_ok = 0
         data_ok = 0
         frame_number = 0
-        detected_object = dict()
+        detected_object = {
+            "x": [],
+            "y": [],
+            "z": [],
+            "v": []
+        }
         azimuth_data = dict()
         range_doppler_data = dict()
         range_profile = list()
@@ -213,53 +218,86 @@ class Radar:
                 num_detected_object = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
                 tlv_types = np.matmul(self.byte_buffer[index:index + 4], word)
-                index += 8
-                # print("====================================")
-                # print("frame_number:", frame_number)
-                # print("num_detected_object:", num_detected_object)
+                index += 4
+                sub_frame_number = np.matmul(self.byte_buffer[index:index + 4], word)
+                index += 4
+                num_static_object = np.matmul(self.byte_buffer[index:index + 4], word)
+                index += 4
+                print("====================================")
+                print("frame_number:", frame_number)
+                print("num_static_object:", num_static_object)
                 for _ in range(tlv_types):
-                    try:
-                        tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
-                    except ValueError:
-                        continue
-                    # print("tlv_type:", tlv_type)
+                    tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
+                    print("tlv_type:", tlv_type)
                     index += 4
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
-                    # print("tlv_length: ", tlv_length)
-                    if tlv_type == demo_uart_msg_detected_points:
-                        x = np.zeros(num_detected_object, dtype="float")
-                        y = np.zeros(num_detected_object, dtype="float")
-                        z = np.zeros(num_detected_object, dtype="float")
-                        v = np.zeros(num_detected_object, dtype="float")
-                        param_list = [x, y, z, v]
-                        for i in range(num_detected_object):
-                            for item in param_list:
-                                # print(np.matmul(self.byte_buffer[index:index + 4], word))
-                                # item[i] = np.matmul(self.byte_buffer[index:index + 4], word)
-                                item[i] = struct.unpack(
+                    if tlv_type not in [1, 7, 8, 9, 10, 11]:
+                        index = total_packet_length
+                        break
+                    elif tlv_type == area_scanner_track_object_list:
+                        posx = list()
+                        posy = list()
+                        posz = list()
+                        vel = list()
+                        acc = list()
+                        for _ in range(num_detected_object):
+                            target_id = np.matmul(self.byte_buffer[index:index + 4], word)
+                            pos_x = struct.unpack(
                                         '<f',
                                         codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                                index += 4
-                        detected_object.update(
-                            {
-                                "NumObj": num_detected_object,
-                                "x": -x,
-                                "y": y,
-                                "z": z,
-                                "v": v
-                            }
-                        )
-                        # pprint.pprint(detected_object)
+                            index += 4
+                            pos_y = struct.unpack(
+                                        '<f',
+                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                            index += 4
+                            vel_x = struct.unpack(
+                                        '<f',
+                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                            index += 4
+                            vel_y = struct.unpack(
+                                        '<f',
+                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                            index += 4
+                            acc_x = struct.unpack(
+                                        '<f',
+                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                            index += 4
+                            acc_y = struct.unpack(
+                                        '<f',
+                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                            index += 4
+                            pos_z = struct.unpack(
+                                        '<f',
+                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                            index += 4
+                            vel_z = struct.unpack(
+                                        '<f',
+                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                            index += 4
+                            acc_z = struct.unpack(
+                                        '<f',
+                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                            index += 4
+                            posx.append(pos_x)
+                            posy.append(pos_y)
+                            posz.append(pos_z)
+                            vel.append((vel_x**2 + vel_y**2 + vel_z**2)**0.5)
+                        detected_object.update({
+                            "x": posx,
+                            "y": posy,
+                            "z": posz,
+                            "v": vel
+                        })
                         data_ok = 1
-                    elif tlv_type == demo_uart_msg_range_profile:
-                        range_profile = np.zeros(self._config_parameter["RangeBins"], dtype="int16")
-                        for i in range(self._config_parameter["RangeBins"]):
-                            range_profile[i] = np.matmul(self.byte_buffer[index:index + 2], word[:2])
-                            index += 2
                     else:
                         index += tlv_length
-                    # print("---------------------")
+
+                # in case of corrupted data, reformat the index to packet length
+                if total_packet_length - index > 20:
+                    print("index shifted")
+                    index = total_packet_length-20
+                # index = total_packet_length-44
                 if index > 0:
                     shift_index = index
                     try:
@@ -271,13 +309,13 @@ class Radar:
 
                     if self.byte_buffer_length < 0:
                         self.byte_buffer_length = 0
-
         radar_data = {
             "3d_scatter": detected_object,
             "azimuth_heatmap": azimuth_data,
             "range_doppler": range_doppler_data,
             "range_profile": range_profile
         }
+        # data_ok = 1
         if self.args["write_file"] and data_ok:
             self.write_to_json(radar_data)
         return data_ok, frame_number, radar_data
@@ -319,7 +357,7 @@ class Radar:
     def plot_3d_scatter(self, detected_object):
         if self.args["remove_static_noise"]:
             self._remove_static(detected_object)
-        if len(self.length_list) >= 10:  # delay x * 0.033 s
+        if len(self.length_list) >= 1:  # delay x * 0.033 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
