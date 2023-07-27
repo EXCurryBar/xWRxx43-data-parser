@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 import functools
-PLOT_RANGE_IN_CM = 6
+PLOT_RANGE_IN_CM = 8
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -40,6 +40,8 @@ class Radar:
         self.xs = list()
         self.ys = list()
         self.zs = list()
+        self.tracking_list = list()
+        self.tracking_id = list()
         self.accumulated = dict()
 
         # uart things variable
@@ -153,10 +155,16 @@ class Radar:
             "x": [],
             "y": [],
             "z": [],
+            "v": [],
+            "acc": []
+        }
+        tracking_object = {
+            "target_id": [],
+            "x": [],
+            "y": [],
+            "z": [],
             "v": []
         }
-        azimuth_data = dict()
-        range_doppler_data = dict()
         range_profile = list()
         radar_data = dict()
 
@@ -223,12 +231,13 @@ class Radar:
                 index += 4
                 num_static_object = np.matmul(self.byte_buffer[index:index + 4], word)
                 index += 4
-                print("====================================")
-                print("frame_number:", frame_number)
-                print("num_static_object:", num_static_object)
+                # print("====================================")
+                # print("\rframe_number:", frame_number)
+                # print("num_static_object:", num_static_object)
+                # print("num_detected_object:", num_detected_object)
                 for _ in range(tlv_types):
                     tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
-                    print("tlv_type:", tlv_type)
+                    # print("tlv_type:", tlv_type)
                     index += 4
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
@@ -236,13 +245,17 @@ class Radar:
                         index = total_packet_length
                         break
                     elif tlv_type == area_scanner_track_object_list:
+                        targets = list()
                         posx = list()
                         posy = list()
                         posz = list()
                         vel = list()
                         acc = list()
                         for _ in range(num_detected_object):
-                            target_id = np.matmul(self.byte_buffer[index:index + 4], word)
+                            target_id = struct.unpack(
+                                        '<f',
+                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                            index += 4
                             pos_x = struct.unpack(
                                         '<f',
                                         codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
@@ -279,17 +292,60 @@ class Radar:
                                         '<f',
                                         codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
                             index += 4
+                            targets.append(target_id)
                             posx.append(pos_x)
                             posy.append(pos_y)
                             posz.append(pos_z)
                             vel.append((vel_x**2 + vel_y**2 + vel_z**2)**0.5)
-                        detected_object.update({
+                        tracking_object.update({
+                            "target_id": targets,
                             "x": posx,
                             "y": posy,
                             "z": posz,
-                            "v": vel
+                            "v": vel,
                         })
                         data_ok = 1
+                    elif tlv_type == area_scanner_dynamic_points:
+                        index_start = index
+                        posx = list()
+                        posy = list()
+                        posz = list()
+                        vel = list()
+                        for _ in range(num_detected_object):
+                            try:
+                                r = struct.unpack(
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
+                                index += 4
+                                angle = struct.unpack(
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
+                                index += 4
+                                elev = struct.unpack(
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
+                                index += 4
+                                doppler = struct.unpack(
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
+                                index += 4
+
+                                elev = np.pi/2 - elev
+                                posx.append(r * np.sin(elev) * np.sin(angle))
+                                posy.append(r * np.sin(elev) * np.cos(angle))
+                                posz.append(r * np.cos(elev))
+                                vel.append(doppler)
+                                detected_object.update({
+                                    "x": posx,
+                                    "y": posy,
+                                    "z": posz,
+                                    "v": vel
+                                })
+                                data_ok = 1
+                            except struct.error:
+                                print("struct error")
+                                index = index_start + tlv_length
+                                break
                     else:
                         index += tlv_length
 
@@ -311,8 +367,7 @@ class Radar:
                         self.byte_buffer_length = 0
         radar_data = {
             "3d_scatter": detected_object,
-            "azimuth_heatmap": azimuth_data,
-            "range_doppler": range_doppler_data,
+            "tracking_object": tracking_object,
             "range_profile": range_profile
         }
         # data_ok = 1
@@ -355,19 +410,26 @@ class Radar:
             }
 
     def plot_3d_scatter(self, detected_object):
+        tracker = detected_object["tracking_object"]
+        points = detected_object["3d_scatter"]
         if self.args["remove_static_noise"]:
-            self._remove_static(detected_object)
-        if len(self.length_list) >= 1:  # delay x * 0.033 s
+            self._remove_static(points)
+        if len(self.length_list) >= 10:  # delay x * 0.033 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
             self.length_list.pop(0)
         self.ax.cla()
-        self.length_list.append(len(detected_object["x"]))
-        self.xs += list(detected_object["x"])
-        self.ys += list(detected_object["y"])
-        self.zs += list(detected_object["z"])
+        self.length_list.append(len(points["x"]))
+        self.xs += list(points["x"])
+        self.ys += list(points["y"])
+        self.zs += list(points["z"])
+        center_x = tracker["x"]
+        center_y = tracker["y"]
+        center_z = tracker["z"]
+        ids = tracker["target_id"]
         self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
+        self.ax.scatter(center_x, center_y, center_z, c='g', marker='*', label="Center Points")
         self.ax.set_xlabel('X(m)')
         self.ax.set_ylabel('range (m)')
         self.ax.set_zlabel('elevation (m)')
@@ -454,7 +516,7 @@ class Radar:
 
     @staticmethod
     def _remove_static(detected_object):
-        motion = list(detected_object["v"])
+        motion = detected_object["v"]
         xs = list(detected_object["x"])
         ys = list(detected_object["y"])
         zs = list(detected_object["z"])
