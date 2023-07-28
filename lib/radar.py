@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 import functools
-PLOT_RANGE_IN_CM = 8
+PLOT_RANGE_IN_METER = 8
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -149,7 +149,6 @@ class Radar:
         magic_word = [2, 1, 4, 3, 6, 5, 8, 7]
 
         magic_ok = 0
-        data_ok = 0
         frame_number = 0
         detected_object = {
             "x": [],
@@ -160,6 +159,12 @@ class Radar:
         }
         tracking_object = {
             "target_id": [],
+            "x": [],
+            "y": [],
+            "z": [],
+            "v": []
+        }
+        static_object = {
             "x": [],
             "y": [],
             "z": [],
@@ -241,10 +246,12 @@ class Radar:
                     index += 4
                     tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
                     index += 4
+
                     if tlv_type not in [1, 7, 8, 9, 10, 11]:
                         index = total_packet_length
                         break
                     elif tlv_type == area_scanner_track_object_list:
+                        index_start = index
                         targets = list()
                         posx = list()
                         posy = list()
@@ -252,59 +259,63 @@ class Radar:
                         vel = list()
                         acc = list()
                         for _ in range(num_detected_object):
-                            target_id = struct.unpack(
-                                        '<f',
-                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                            index += 4
-                            pos_x = struct.unpack(
-                                        '<f',
-                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                            index += 4
-                            pos_y = struct.unpack(
-                                        '<f',
-                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                            index += 4
-                            vel_x = struct.unpack(
-                                        '<f',
-                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                            index += 4
-                            vel_y = struct.unpack(
-                                        '<f',
-                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                            index += 4
-                            acc_x = struct.unpack(
-                                        '<f',
-                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                            index += 4
-                            acc_y = struct.unpack(
-                                        '<f',
-                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                            index += 4
-                            pos_z = struct.unpack(
-                                        '<f',
-                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                            index += 4
-                            vel_z = struct.unpack(
-                                        '<f',
-                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                            index += 4
-                            acc_z = struct.unpack(
-                                        '<f',
-                                        codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
-                            index += 4
-                            targets.append(target_id)
-                            posx.append(pos_x)
-                            posy.append(pos_y)
-                            posz.append(pos_z)
-                            vel.append((vel_x**2 + vel_y**2 + vel_z**2)**0.5)
-                        tracking_object.update({
-                            "target_id": targets,
-                            "x": posx,
-                            "y": posy,
-                            "z": posz,
-                            "v": vel,
-                        })
-                        data_ok = 1
+                            try:
+                                target_id = struct.unpack(
+                                            '<f',
+                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                index += 4
+                                pos_x = struct.unpack(
+                                            '<f',
+                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                index += 4
+                                pos_y = struct.unpack(
+                                            '<f',
+                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                index += 4
+                                vel_x = struct.unpack(
+                                            '<f',
+                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                index += 4
+                                vel_y = struct.unpack(
+                                            '<f',
+                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                index += 4
+                                acc_x = struct.unpack(
+                                            '<f',
+                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                index += 4
+                                acc_y = struct.unpack(
+                                            '<f',
+                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                index += 4
+                                pos_z = struct.unpack(
+                                            '<f',
+                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                index += 4
+                                vel_z = struct.unpack(
+                                            '<f',
+                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                index += 4
+                                acc_z = struct.unpack(
+                                            '<f',
+                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                index += 4
+                                targets.append(target_id)
+                                posx.append(pos_x)
+                                posy.append(pos_y)
+                                posz.append(pos_z)
+                                vel.append((vel_x**2 + vel_y**2 + vel_z**2)**0.5)
+                                tracking_object.update({
+                                    "target_id": targets,
+                                    "x": posx,
+                                    "y": posy,
+                                    "z": posz,
+                                    "v": vel,
+                                })
+                            except struct.error:
+                                print("struct error")
+                                index = index_start + tlv_length
+                                break
                     elif tlv_type == area_scanner_dynamic_points:
                         index_start = index
                         posx = list()
@@ -341,7 +352,46 @@ class Radar:
                                     "z": posz,
                                     "v": vel
                                 })
-                                data_ok = 1
+                            except struct.error:
+                                print("struct error")
+                                index = index_start + tlv_length
+                                break
+                    elif tlv_type == area_scanner_static_points:
+                        index_start = index
+                        posx = list()
+                        posy = list()
+                        posz = list()
+                        vel = list()
+                        vel = list()
+                        for _ in range(num_detected_object):
+                            try:
+                                x = struct.unpack(
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
+                                index += 4
+                                y = struct.unpack(
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
+                                index += 4
+                                z = struct.unpack(
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
+                                index += 4
+                                doppler = struct.unpack(
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
+                                index += 4
+
+                                posx.append(x)
+                                posy.append(y)
+                                posz.append(z)
+                                vel.append(doppler)
+                                static_object.update({
+                                    "x": posx,
+                                    "y": posy,
+                                    "z": posz,
+                                    "v": vel
+                                })
                             except struct.error:
                                 print("struct error")
                                 index = index_start + tlv_length
@@ -349,6 +399,7 @@ class Radar:
                     else:
                         index += tlv_length
 
+                        # index += tlv_length
                 # in case of corrupted data, reformat the index to packet length
                 if total_packet_length - index > 20:
                     print("index shifted")
@@ -368,12 +419,12 @@ class Radar:
         radar_data = {
             "3d_scatter": detected_object,
             "tracking_object": tracking_object,
+            "static_object": static_object,
             "range_profile": range_profile
         }
-        # data_ok = 1
-        if self.args["write_file"] and data_ok:
+        if self.args["write_file"] and magic_ok:
             self.write_to_json(radar_data)
-        return data_ok, frame_number, radar_data
+        return magic_ok, frame_number, radar_data
 
     def close_connection(self):
         if self.args["write_file"]:
@@ -412,6 +463,7 @@ class Radar:
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
         points = detected_object["3d_scatter"]
+        static = detected_object["static_object"]
         if self.args["remove_static_noise"]:
             self._remove_static(points)
         if len(self.length_list) >= 10:  # delay x * 0.033 s
@@ -427,15 +479,18 @@ class Radar:
         center_x = tracker["x"]
         center_y = tracker["y"]
         center_z = tracker["z"]
-        ids = tracker["target_id"]
+        static_x = static["x"]
+        static_y = static["y"]
+        static_z = static["z"]
         self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
         self.ax.scatter(center_x, center_y, center_z, c='g', marker='*', label="Center Points")
+        # self.ax.scatter(static_x, static_y, static_z, c='b', marker='^', label="Static Points")
         self.ax.set_xlabel('X(m)')
         self.ax.set_ylabel('range (m)')
         self.ax.set_zlabel('elevation (m)')
-        self.ax.set_xlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
-        self.ax.set_ylim(0, PLOT_RANGE_IN_CM)
-        self.ax.set_zlim(-PLOT_RANGE_IN_CM, PLOT_RANGE_IN_CM)
+        self.ax.set_xlim(-PLOT_RANGE_IN_METER, PLOT_RANGE_IN_METER)
+        self.ax.set_ylim(0, PLOT_RANGE_IN_METER)
+        self.ax.set_zlim(-PLOT_RANGE_IN_METER, PLOT_RANGE_IN_METER)
         plt.draw()
         plt.pause(1 / 30)
 
@@ -528,7 +583,6 @@ class Radar:
             del zs[index]
         detected_object.update(
             {
-                "NumObj": len(motion),
                 "v": motion,
                 "x": xs,
                 "y": ys,
