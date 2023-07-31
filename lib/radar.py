@@ -12,7 +12,9 @@ import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 import functools
-PLOT_RANGE_IN_METER = 8
+
+PLOT_RANGE_IN_METER = 4
+RADAR_HEIGHT_IN_METER = 1.6
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -62,9 +64,6 @@ class Radar:
             self._file_name = datetime.today().strftime("%Y-%m-%d-%H%M")
             self._writer = open(f"./output_file/{self._file_name}.json", 'a', encoding="UTF-8")
 
-        # 這個可以更大
-        # self.max_buffer_size = 2**10 # 1k
-        # self.max_buffer_size = 2**20 # 1M
         self.max_buffer_size = 2 ** 15
         self.byte_buffer = np.zeros(self.max_buffer_size, dtype='uint8')
         self.byte_buffer_length = 0
@@ -139,7 +138,6 @@ class Radar:
     def parse_data(self):
         # header.version
         word = [1, 2 ** 8, 2 ** 16, 2 ** 24]
-        word_big = [2**24, 2**16, 2**8, 1]
         object_struct_size = 12
         byte_vector_acc_max_size = 2 ** 15
         area_scanner_dynamic_points = 1
@@ -241,11 +239,13 @@ class Radar:
                 # print("num_static_object:", num_static_object)
                 # print("num_detected_object:", num_detected_object)
                 for _ in range(tlv_types):
-                    tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
-                    # print("tlv_type:", tlv_type)
-                    index += 4
-                    tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
-                    index += 4
+                    try:
+                        tlv_type = np.matmul(self.byte_buffer[index:index + 4], word)
+                        index += 4
+                        tlv_length = np.matmul(self.byte_buffer[index:index + 4], word)
+                        index += 4
+                    except ValueError:
+                        break
 
                     if tlv_type not in [1, 7, 8, 9, 10, 11]:
                         index = total_packet_length
@@ -260,9 +260,7 @@ class Radar:
                         acc = list()
                         for _ in range(num_detected_object):
                             try:
-                                target_id = struct.unpack(
-                                            '<f',
-                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                target_id = np.matmul(self.byte_buffer[index:index + 4], word)
                                 index += 4
                                 pos_x = struct.unpack(
                                             '<f',
@@ -300,6 +298,11 @@ class Radar:
                                             '<f',
                                             codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
                                 index += 4
+
+                                if target_id <= 0 or target_id > 250:
+                                    # filter error value
+                                    continue
+
                                 targets.append(target_id)
                                 posx.append(pos_x)
                                 posy.append(pos_y)
@@ -362,7 +365,6 @@ class Radar:
                         posy = list()
                         posz = list()
                         vel = list()
-                        vel = list()
                         for _ in range(num_detected_object):
                             try:
                                 x = struct.unpack(
@@ -396,6 +398,7 @@ class Radar:
                                 print("struct error")
                                 index = index_start + tlv_length
                                 break
+                    # elif tlv_type
                     else:
                         index += tlv_length
 
@@ -490,7 +493,7 @@ class Radar:
         self.ax.set_zlabel('elevation (m)')
         self.ax.set_xlim(-PLOT_RANGE_IN_METER, PLOT_RANGE_IN_METER)
         self.ax.set_ylim(0, PLOT_RANGE_IN_METER)
-        self.ax.set_zlim(-PLOT_RANGE_IN_METER, PLOT_RANGE_IN_METER)
+        self.ax.set_zlim(-RADAR_HEIGHT_IN_METER, RADAR_HEIGHT_IN_METER)
         plt.draw()
         plt.pause(1 / 30)
 
@@ -575,7 +578,7 @@ class Radar:
         xs = list(detected_object["x"])
         ys = list(detected_object["y"])
         zs = list(detected_object["z"])
-        static_index = [i for i in range(len(motion)) if motion[i] == 0]
+        static_index = [i for i in range(len(motion)) if motion[i] <= 0.2]
         for index in sorted(static_index, reverse=True):
             del motion[index]
             del xs[index]
