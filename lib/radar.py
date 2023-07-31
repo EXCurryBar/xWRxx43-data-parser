@@ -11,10 +11,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 from datetime import datetime
+from sklearn.cluster import HDBSCAN
 import functools
 
-PLOT_RANGE_IN_METER = 4
-RADAR_HEIGHT_IN_METER = 1.6
+PLOT_RANGE_IN_METER = 5
+RADAR_HEIGHT_IN_METER = 2.2
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -299,9 +300,9 @@ class Radar:
                                             codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
                                 index += 4
 
-                                if target_id <= 0 or target_id > 250:
-                                    # filter error value
-                                    continue
+                                # if target_id <= 0 or target_id > 250:
+                                #     # filter error value
+                                #     continue
 
                                 targets.append(target_id)
                                 posx.append(pos_x)
@@ -469,7 +470,7 @@ class Radar:
         static = detected_object["static_object"]
         if self.args["remove_static_noise"]:
             self._remove_static(points)
-        if len(self.length_list) >= 10:  # delay x * 0.033 s
+        if len(self.length_list) >= 5:  # delay x * 0.033 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
@@ -479,14 +480,25 @@ class Radar:
         self.xs += list(points["x"])
         self.ys += list(points["y"])
         self.zs += list(points["z"])
+
+        top_down = np.array([item for item in zip(self.xs, self.ys)])
+        if len(self.xs) > 5:
+            # print(len(self.length_list))
+            cluster = HDBSCAN(min_cluster_size=4, allow_single_cluster=True).fit(top_down)
+            color = cluster.labels_
+            print(set(cluster.labels_))
+            # print(len())
+        else:
+            color = 'r'
+
         center_x = tracker["x"]
         center_y = tracker["y"]
         center_z = tracker["z"]
         static_x = static["x"]
         static_y = static["y"]
         static_z = static["z"]
-        self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
-        self.ax.scatter(center_x, center_y, center_z, c='g', marker='*', label="Center Points")
+        self.ax.scatter(self.xs, self.ys, self.zs, c=color, marker='o', label="Radar Data")
+        self.ax.scatter(center_x, center_y, center_z, c='b', marker='^', label="Center Points")
         # self.ax.scatter(static_x, static_y, static_z, c='b', marker='^', label="Static Points")
         self.ax.set_xlabel('X(m)')
         self.ax.set_ylabel('range (m)')
@@ -578,7 +590,7 @@ class Radar:
         xs = list(detected_object["x"])
         ys = list(detected_object["y"])
         zs = list(detected_object["z"])
-        static_index = [i for i in range(len(motion)) if motion[i] <= 0.2]
+        static_index = [i for i in range(len(motion)) if motion[i] <= 0.1]
         for index in sorted(static_index, reverse=True):
             del motion[index]
             del xs[index]
