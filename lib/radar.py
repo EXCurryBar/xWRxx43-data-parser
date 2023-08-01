@@ -14,7 +14,7 @@ from datetime import datetime
 from sklearn.cluster import HDBSCAN
 import functools
 
-PLOT_RANGE_IN_METER = 5
+PLOT_RANGE_IN_METER = 3
 RADAR_HEIGHT_IN_METER = 2.2
 
 
@@ -316,7 +316,7 @@ class Radar:
                                     "z": posz,
                                     "v": vel,
                                 })
-                            except struct.error:
+                            except struct.error or ValueError:
                                 print("struct error")
                                 index = index_start + tlv_length
                                 break
@@ -464,42 +464,101 @@ class Radar:
                 "CliPort": "/dev/ttyACM0"
             }
 
+    @staticmethod
+    def process_cluster(scatter_data, thr=10):
+        cluster = HDBSCAN(min_cluster_size=thr, allow_single_cluster=True).fit(scatter_data)
+        color = cluster.labels_
+        labels = set(color)
+        bounding_boxes = list()
+
+        groups = list()
+        for label in labels:
+            x1 = -999
+            y1 = -999
+            z1 = -999
+
+            x2 = 999
+            y2 = 999
+            z2 = 999
+
+            group = list()
+            for idx, value in enumerate(color):
+                if value == label:
+                    x, y, z = scatter_data[idx]
+                    x1 = x if x > x1 else x1
+                    y1 = y if y > y1 else y1
+                    z1 = z if z > z1 else z1
+
+                    x2 = x if x2 > x else x2
+                    y2 = y if y2 > y else y2
+                    z2 = z if x2 > z else z2
+
+                    group.append(scatter_data[idx])
+            bounding_boxes.append(
+                [
+                    [[x1, y1, z1], [x1, y2, z1]],
+                    [[x1, y1, z1], [x2, y1, z1]],
+                    [[x1, y1, z1], [x1, y1, z2]],
+                    [[x1, y1, z2], [x1, y2, z2]],
+                    [[x1, y1, z2], [x2, y1, z2]],
+                    [[x2, y1, z2], [x2, y2, z2]],
+                    [[x2, y1, z2], [x2, y1, z1]],
+                    [[x2, y1, z1], [x2, y2, z1]],
+                    [[x2, y2, z2], [x2, y2, z1]],
+                    [[x2, y2, z2], [x1, y2, z2]],
+                    [[x1, y2, z2], [x1, y2, z1]],
+                    [[x1, y2, z1], [x2, y2, z1]]
+                ]
+            )
+            groups.append(group)
+        return color, groups, bounding_boxes
+
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
         points = detected_object["3d_scatter"]
         static = detected_object["static_object"]
         if self.args["remove_static_noise"]:
             self._remove_static(points)
-        if len(self.length_list) >= 5:  # delay x * 0.033 s
+        if len(self.length_list) >= 10:  # delay x * 0.033 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
             self.length_list.pop(0)
         self.ax.cla()
         self.length_list.append(len(points["x"]))
+
         self.xs += list(points["x"])
         self.ys += list(points["y"])
         self.zs += list(points["z"])
 
-        top_down = np.array([item for item in zip(self.xs, self.ys)])
-        if len(self.xs) > 5:
-            # print(len(self.length_list))
-            cluster = HDBSCAN(min_cluster_size=4, allow_single_cluster=True).fit(top_down)
-            color = cluster.labels_
-            print(set(cluster.labels_))
-            # print(len())
+        top_down = np.array([item for item in zip(self.xs, self.ys, self.zs)])
+        if len(self.xs) > 10:
+            color, groups, bounding_boxes = self.process_cluster(top_down)
+            # print(bounding_boxes)
+            for box in bounding_boxes:
+                for line in box:
+                    vertex1 = line[0]
+                    vertex2 = line[1]
+
+                    edge_x = [vertex1[0], vertex2[0]]
+                    edge_y = [vertex1[1], vertex2[1]]
+                    edge_z = [vertex1[2], vertex2[2]]
+
+                    plt.plot(edge_x, edge_y, edge_z, c='g', marker=None, linestyle='-', linewidth=2)
         else:
             color = 'r'
 
         center_x = tracker["x"]
         center_y = tracker["y"]
         center_z = tracker["z"]
-        static_x = static["x"]
-        static_y = static["y"]
-        static_z = static["z"]
+        # static_x = static["x"]
+        # static_y = static["y"]
+        # static_z = static["z"]
+
         self.ax.scatter(self.xs, self.ys, self.zs, c=color, marker='o', label="Radar Data")
-        self.ax.scatter(center_x, center_y, center_z, c='b', marker='^', label="Center Points")
+        self.ax.scatter(center_x, center_y, center_z, s=8**2, c='r', marker='^', label="Center Points")
         # self.ax.scatter(static_x, static_y, static_z, c='b', marker='^', label="Static Points")
+
         self.ax.set_xlabel('X(m)')
         self.ax.set_ylabel('range (m)')
         self.ax.set_zlabel('elevation (m)')
