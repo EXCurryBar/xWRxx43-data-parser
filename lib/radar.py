@@ -15,7 +15,8 @@ from sklearn.cluster import HDBSCAN
 import functools
 
 PLOT_RANGE_IN_METER = 3
-RADAR_HEIGHT_IN_METER = 2.2
+RADAR_HEIGHT_IN_METER = 1.6
+
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -470,7 +471,7 @@ class Radar:
         color = cluster.labels_
         labels = set(color)
         bounding_boxes = list()
-
+        flag = False
         groups = list()
         for label in labels:
             x1 = -999
@@ -494,6 +495,10 @@ class Radar:
                     z2 = z if x2 > z else z2
 
                     group.append(scatter_data[idx])
+                    # print(x1, y1, z1)
+                    # print(x2, y2, z2)
+            groups.append(group)
+            z2 = -RADAR_HEIGHT_IN_METER if z2 == 999 else z2
             bounding_boxes.append(
                 [
                     [[x1, y1, z1], [x1, y2, z1]],
@@ -510,16 +515,15 @@ class Radar:
                     [[x1, y2, z1], [x2, y2, z1]]
                 ]
             )
-            groups.append(group)
         return color, groups, bounding_boxes
 
     def plot_3d_scatter(self, detected_object):
-        tracker = detected_object["tracking_object"]
+        # tracker = detected_object["tracking_object"]
         points = detected_object["3d_scatter"]
-        static = detected_object["static_object"]
+        # static = detected_object["static_object"]
         if self.args["remove_static_noise"]:
             self._remove_static(points)
-        if len(self.length_list) >= 10:  # delay x * 0.033 s
+        if len(self.length_list) >= 20:  # delay x * 0.033 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
@@ -533,8 +537,8 @@ class Radar:
 
         top_down = np.array([item for item in zip(self.xs, self.ys, self.zs)])
         if len(self.xs) > 10:
-            color, groups, bounding_boxes = self.process_cluster(top_down)
-            # print(bounding_boxes)
+            color, groups, bounding_boxes = self.process_cluster(top_down, 5)
+
             for box in bounding_boxes:
                 for line in box:
                     vertex1 = line[0]
@@ -548,15 +552,15 @@ class Radar:
         else:
             color = 'r'
 
-        center_x = tracker["x"]
-        center_y = tracker["y"]
-        center_z = tracker["z"]
+        # center_x = tracker["x"]
+        # center_y = tracker["y"]
+        # center_z = tracker["z"]
         # static_x = static["x"]
         # static_y = static["y"]
         # static_z = static["z"]
 
         self.ax.scatter(self.xs, self.ys, self.zs, c=color, marker='o', label="Radar Data")
-        self.ax.scatter(center_x, center_y, center_z, s=8**2, c='r', marker='^', label="Center Points")
+        # self.ax.scatter(center_x, center_y, center_z, s=8**2, c='r', marker='^', label="Center Points")
         # self.ax.scatter(static_x, static_y, static_z, c='b', marker='^', label="Static Points")
 
         self.ax.set_xlabel('X(m)')

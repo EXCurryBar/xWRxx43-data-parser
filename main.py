@@ -8,7 +8,7 @@ DATA_BAUD = 921600
 
 
 if __name__ == '__main__':
-    radar = Radar("area_scanner_68xx_ODS.cfg", CLI_BAUD, DATA_BAUD, remove_static_noise=False, write_file=False)
+    radar = Radar("area_scanner_68xx_ODS.cfg", CLI_BAUD, DATA_BAUD, remove_static_noise=True, write_file=False)
     while True:
         try:
             data_ok, frame_number, radar_data = radar.parse_data()
