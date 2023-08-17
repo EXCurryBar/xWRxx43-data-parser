@@ -11,7 +11,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 from datetime import datetime
-from sklearn.cluster import HDBSCAN
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 import functools
 
 PLOT_RANGE_IN_METER = 3
@@ -57,8 +58,6 @@ class Radar:
         # plotting variable
         self.fig = plt.figure()
         self.ax = self.fig.add_subplot(111, projection='3d')
-        # self.fig = plt.figure(figsize=(6, 6))
-        # self.ax = plt.subplot(1, 1, 1)  # rows, cols, idx
         # logging things
         if self.args["write_file"]:
             self._wrote_flag = True
@@ -68,6 +67,7 @@ class Radar:
         self.max_buffer_size = 2 ** 15
         self.byte_buffer = np.zeros(self.max_buffer_size, dtype='uint8')
         self.byte_buffer_length = 0
+        self.kmeans = KMeans()
 
     def _send_config(self, config_file_name):
         self._config = open(f"./radar_config/{config_file_name}").readlines()
@@ -408,9 +408,9 @@ class Radar:
 
                         # index += tlv_length
                 # in case of corrupted data, reformat the index to packet length
-                if total_packet_length - index > 20:
-                    print("index shifted")
-                    index = total_packet_length-20
+                # if total_packet_length - index > 15:
+                #     print("index shifted")
+                #     index = total_packet_length-20
                 # index = total_packet_length-44
                 if index > 0:
                     shift_index = index
@@ -471,7 +471,7 @@ class Radar:
         points = detected_object["3d_scatter"]
         if self.args["remove_static_noise"]:
             self._remove_static(points)
-        if len(self.length_list) >= 30:  # delay x * 0.033 s
+        if len(self.length_list) >= 20:  # delay x * 0.1 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
@@ -482,15 +482,24 @@ class Radar:
         self.ys += list(points["y"])
         self.zs += list(points["z"])
 
+        distortions = list()
+        scores = list()
         scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs)])
+        # scatter_data = scatter[np.logical_not(np.isnan(scatter))]
         if len(self.xs) > thr:
-            cluster = HDBSCAN(min_cluster_size=thr, allow_single_cluster=True).fit(scatter_data)
-            color = list(cluster.labels_)
+            for i in range(2, 6):
+                kmeans = KMeans(n_clusters=i, n_init='auto').fit(scatter_data)
+                distortions.append(kmeans.inertia_)
+                scores.append(silhouette_score(scatter_data, kmeans.predict(scatter_data)))
+            selected_k = scores.index(max(scores)) + 2
+
+            kmeans = KMeans(n_clusters=selected_k, n_init='auto').fit(scatter_data)
+            color = list(kmeans.predict(scatter_data))
             labels = set(color)
             bounding_boxes = list()
             groups = list()
             for label in labels:
-                if color.count(label) < thr:
+                if color.count(label) < 10:
                     outlier_index = [i for i in range(len(self.xs)) if color[i] == label]
                     for index in sorted(outlier_index, reverse=True):
                         del self.xs[index]
@@ -540,8 +549,8 @@ class Radar:
                     ]
                 )
             return color, groups, bounding_boxes
-        else:
-            return 'r', [], []
+        # else:
+        return 'r', [], []
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
