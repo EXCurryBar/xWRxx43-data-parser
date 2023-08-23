@@ -194,14 +194,10 @@ class Radar:
             if start_index:
                 # print("start_index[0]:"+str(start_index[0]))
                 if 0 < start_index[0] < self.byte_buffer_length:
-                    try:
-                        self.byte_buffer[:self.byte_buffer_length - start_index[0]] = \
-                            self.byte_buffer[start_index[0]:self.byte_buffer_length]
-                        self.byte_buffer_length -= start_index[0]
-                        start_index[0] = 0
-                    except ValueError:
-                        # TODO fix here
-                        pass
+                    self.byte_buffer[:self.byte_buffer_length - start_index[0]] = \
+                        self.byte_buffer[start_index[0]:self.byte_buffer_length]
+                    self.byte_buffer_length -= start_index[0]
+                    start_index[0] = 0
 
                 if self.byte_buffer_length < 0:
                     self.byte_buffer_length = 0
@@ -463,15 +459,15 @@ class Radar:
                 }
         elif sys.platform == "linux":
             return {
-                "DataPort": "/dev/ttyACM1",
-                "CliPort": "/dev/ttyACM0"
+                "DataPort": "/dev/ttyUSB1",
+                "CliPort": "/dev/ttyUSB0"
             }
 
     def process_cluster(self, detected_object, thr=10):
         points = detected_object["3d_scatter"]
         if self.args["remove_static_noise"]:
             self._remove_static(points)
-        if len(self.length_list) >= 20:  # delay x * 0.1 s
+        if len(self.length_list) >= 10:  # delay x * 0.1 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
@@ -482,15 +478,20 @@ class Radar:
         self.ys += list(points["y"])
         self.zs += list(points["z"])
 
-        distortions = list()
         scores = list()
         scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs)])
-        # scatter_data = scatter[np.logical_not(np.isnan(scatter))]
         if len(self.xs) > thr:
-            for i in range(2, 6):
-                kmeans = KMeans(n_clusters=i, n_init='auto').fit(scatter_data)
-                distortions.append(kmeans.inertia_)
-                scores.append(silhouette_score(scatter_data, kmeans.predict(scatter_data)))
+            xs = list()
+            ys = list()
+            zs = list()
+            for i in range(2, 7):
+                try:
+                    kmeans = KMeans(n_clusters=i, n_init='auto').fit(scatter_data)
+                    scores.append(silhouette_score(scatter_data, kmeans.predict(scatter_data)))
+                except ValueError:
+                    break
+            if len(scores) == 0:
+                return 'r', [], []
             selected_k = scores.index(max(scores)) + 2
 
             kmeans = KMeans(n_clusters=selected_k, n_init='auto').fit(scatter_data)
@@ -514,7 +515,6 @@ class Radar:
                 x2 = 999
                 y2 = 999
                 z2 = 999
-
                 group = list()
                 for idx, value in enumerate(color):
                     if value == label:
@@ -526,7 +526,7 @@ class Radar:
                         x2 = x if x2 > x else x2
                         y2 = y if y2 > y else y2
                         z2 = z if x2 > z else z2
-
+                        
                         group.append(scatter_data[idx])
                         # print(x1, y1, z1)
                         # print(x2, y2, z2)
@@ -548,14 +548,17 @@ class Radar:
                         [[x1, y2, z1], [x2, y2, z1]]
                     ]
                 )
-            return color, groups, bounding_boxes
+                xs.append((x1 + x2)/2)
+                ys.append((y1 + y2)/2)
+                zs.append((z1 + z2)/2)
+            return color, [xs, ys, zs], bounding_boxes
         # else:
         return 'r', [], []
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
-        # static = detected_object["static_object"]
-        color, groups, bounding_boxes = self.process_cluster(detected_object, 15)
+        static = detected_object["static_object"]
+        color, groups, bounding_boxes = self.process_cluster(detected_object, 5)
         self.ax.cla()
         if bounding_boxes:
             for box in bounding_boxes:
@@ -568,14 +571,18 @@ class Radar:
                     edge_z = [vertex1[2], vertex2[2]]
 
                     plt.plot(edge_x, edge_y, edge_z, c='g', marker=None, linestyle='-', linewidth=2)
-        center_x = tracker["x"]
-        center_y = tracker["y"]
-        center_z = tracker["z"]
+
+        # center_x = tracker["x"]
+        # center_y = tracker["y"]
+        # center_z = tracker["z"]
+        center_x = groups[0] if len(groups) == 3 else []
+        center_y = groups[1] if len(groups) == 3 else []
+        center_z = groups[2] if len(groups) == 3 else []
         # static_x = static["x"]
         # static_y = static["y"]
         # static_z = static["z"]
-        self.ax.scatter(self.xs, self.ys, self.zs, c='r', marker='o', label="Radar Data")
-        self.ax.scatter(center_x, center_y, center_z, s=8**2, c='b', marker='x', label="Center Points")
+        self.ax.scatter(self.xs, self.ys, self.zs, c=color, marker='o', label="Radar Data")
+        self.ax.scatter(center_x, center_y, center_z, s=8**2, c='r', marker='^', label="Center Points")
         # self.ax.scatter(static_x, static_y, static_z, c='b', marker='^', label="Static Points")
 
         self.ax.set_xlabel('X(m)')
@@ -586,81 +593,6 @@ class Radar:
         self.ax.set_zlim(-RADAR_HEIGHT_IN_METER, RADAR_HEIGHT_IN_METER)
         plt.draw()
         plt.pause(1 / 30)
-
-    def plot_range_doppler(self, heatmap_data):
-        plt.clf()
-        try:
-            if self.args["remove_static_noise"]:
-                cs = plt.contourf(
-                    heatmap_data["range-array"],
-                    heatmap_data["doppler-array"],
-                    heatmap_data["range-doppler"],
-                    vmax=1000,
-                    vmin=200
-                )
-            else:
-                cs = plt.contourf(
-                    heatmap_data["range-array"],
-                    heatmap_data["doppler-array"],
-                    heatmap_data["range-doppler"],
-                )
-            self.fig.colorbar(cs)
-            self.fig.canvas.draw()
-            plt.pause(0.1)
-        except KeyError:
-            pass
-
-    @staticmethod
-    def plot_range_profile(range_profile_data):
-        plt.cla()
-        plt.plot(range_profile_data)
-        plt.ylim(0, 5000)
-        plt.xlim(0, 256)
-        plt.draw()
-        plt.pause(1 / 30)
-
-    def _accumulate_weight(self, data, mode, alpha=0.7, threshold=400):
-        try:
-            self.accumulated[mode] = \
-                self.accumulated[mode] * (1 - alpha) + np.array(data, dtype='float32') * alpha
-            plot_data = np.array(data, dtype='float32') - self.accumulated[mode]
-            for i in range(len(plot_data)):
-                for j in range(len(plot_data[i])):
-                    if plot_data[i][j] <= threshold:
-                        plot_data[i][j] = threshold
-
-            return plot_data
-        except KeyError:
-            print("corrupted data")
-
-    def plot_heat_map(self, detected_object):
-        plt.clf()
-        if self.args["remove_static_noise"]:
-            cs = plt.contourf(
-                detected_object["posX"],
-                detected_object["posY"],
-                detected_object["heatMap"],
-                vmax=2000,
-                vmin=400
-            )
-        else:
-            cs = plt.contourf(
-                detected_object["posX"],
-                detected_object["posY"],
-                detected_object["heatMap"],
-            )
-        # 绘制热力图
-        self.fig.colorbar(cs)
-        self.fig.canvas.draw()
-        plt.pause(0.1)
-
-    # @staticmethod
-    # def plot_range_profile(range_bins):
-    #     plt.clf()
-    #     plt.ylim((0, 10000))
-    #     plt.xlim((0, 256))
-    #     plt.plot(range_bins)
-    #     plt.pause(0.0001)
 
     @staticmethod
     def _remove_static(detected_object):
