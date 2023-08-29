@@ -13,10 +13,11 @@ import json
 from datetime import datetime
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
+from filterpy.kalman import KalmanFilter
 import functools
 
 PLOT_RANGE_IN_METER = 3
-RADAR_HEIGHT_IN_METER = 1.6
+RADAR_HEIGHT_IN_METER = 1.35
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -47,6 +48,7 @@ class Radar:
         self.tracking_list = list()
         self.tracking_id = list()
         self.accumulated = dict()
+        self.filter = KalmanFilter(dim_x=5, dim_z=3)
 
         # uart things variable
         port = self._read_com_port()
@@ -458,16 +460,21 @@ class Radar:
                     "CliPort": cli_port
                 }
         elif sys.platform == "linux":
+            if os.path.exists("/dev/ttyACM0"):
+                return {
+                    "DataPort": "/dev/ttyACM1",
+                    "CliPort": "/dev/ttyACM0"
+                }
             return {
                 "DataPort": "/dev/ttyUSB1",
                 "CliPort": "/dev/ttyUSB0"
             }
 
-    def process_cluster(self, detected_object, thr=10):
+    def process_cluster(self, detected_object, thr=10, delay=10):
         points = detected_object["3d_scatter"]
         if self.args["remove_static_noise"]:
             self._remove_static(points)
-        if len(self.length_list) >= 10:  # delay x * 0.1 s
+        if len(self.length_list) >= delay:  # delay x * 0.1 s
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
@@ -500,7 +507,7 @@ class Radar:
             bounding_boxes = list()
             groups = list()
             for label in labels:
-                if color.count(label) < 10:
+                if color.count(label) < thr:
                     outlier_index = [i for i in range(len(self.xs)) if color[i] == label]
                     for index in sorted(outlier_index, reverse=True):
                         del self.xs[index]
@@ -554,11 +561,24 @@ class Radar:
             return color, [xs, ys, zs], bounding_boxes
         # else:
         return 'r', [], []
+    
+    def track_and_project(self, tracking_parameters):
+        label, groups, bounding_box = tracking_parameters
+        euclid_range = lambda a, b: np.abs((a[0]**2 + a[1]**2 + a[2]**2)**0.5 - (b[0]**2 + b[1]**2 + b[2]**2)**0.5)
+        if len(groups) > 0:
+              
+            xs, ys, zs = groups
+            for idx, center_point in enumerate(zip(xs, ys, zs)):
+                self.filter.update(np.array(center_point).T)
+                print(self.filter.predict())
+
+        return ""
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
         static = detected_object["static_object"]
         color, groups, bounding_boxes = self.process_cluster(detected_object, 5)
+        tracking_state = self.track_and_project([color, groups, bounding_boxes])
         self.ax.cla()
         if bounding_boxes:
             for box in bounding_boxes:
