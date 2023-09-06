@@ -17,7 +17,7 @@ from filterpy.kalman import KalmanFilter
 import functools
 
 PLOT_RANGE_IN_METER = 3
-RADAR_HEIGHT_IN_METER = 1.35
+RADAR_HEIGHT_IN_METER = 1.6
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -404,12 +404,6 @@ class Radar:
                     else:
                         index += tlv_length
 
-                        # index += tlv_length
-                # in case of corrupted data, reformat the index to packet length
-                # if total_packet_length - index > 15:
-                #     print("index shifted")
-                #     index = total_packet_length-20
-                # index = total_packet_length-44
                 if index > 0:
                     shift_index = index
                     try:
@@ -491,7 +485,7 @@ class Radar:
             xs = list()
             ys = list()
             zs = list()
-            for i in range(2, 7):
+            for i in range(2, 9):
                 try:
                     kmeans = KMeans(n_clusters=i, n_init='auto').fit(scatter_data)
                     scores.append(silhouette_score(scatter_data, kmeans.predict(scatter_data)))
@@ -561,24 +555,11 @@ class Radar:
             return color, [xs, ys, zs], bounding_boxes
         # else:
         return 'r', [], []
-    
-    def track_and_project(self, tracking_parameters):
-        label, groups, bounding_box = tracking_parameters
-        euclid_range = lambda a, b: np.abs((a[0]**2 + a[1]**2 + a[2]**2)**0.5 - (b[0]**2 + b[1]**2 + b[2]**2)**0.5)
-        if len(groups) > 0:
-              
-            xs, ys, zs = groups
-            for idx, center_point in enumerate(zip(xs, ys, zs)):
-                self.filter.update(np.array(center_point).T)
-                print(self.filter.predict())
-
-        return ""
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
         static = detected_object["static_object"]
-        color, groups, bounding_boxes = self.process_cluster(detected_object, 5)
-        tracking_state = self.track_and_project([color, groups, bounding_boxes])
+        color, groups, bounding_boxes = self.process_cluster(detected_object, 5, 10)
         self.ax.cla()
         if bounding_boxes:
             for box in bounding_boxes:
@@ -595,9 +576,15 @@ class Radar:
         # center_x = tracker["x"]
         # center_y = tracker["y"]
         # center_z = tracker["z"]
-        center_x = groups[0] if len(groups) == 3 else []
-        center_y = groups[1] if len(groups) == 3 else []
-        center_z = groups[2] if len(groups) == 3 else []
+        if len(groups) == 3:
+            center_x = groups[0]
+            center_y = groups[1]
+            center_z = groups[2]
+        
+        else:
+            center_x = []
+            center_y = []
+            center_z = []
         # static_x = static["x"]
         # static_y = static["y"]
         # static_z = static["z"]
@@ -620,7 +607,7 @@ class Radar:
         xs = list(detected_object["x"])
         ys = list(detected_object["y"])
         zs = list(detected_object["z"])
-        static_index = [i for i in range(len(motion)) if motion[i] <= 0.1]
+        static_index = [i for i in range(len(motion)) if motion[i] == 0]
         for index in sorted(static_index, reverse=True):
             del motion[index]
             del xs[index]
