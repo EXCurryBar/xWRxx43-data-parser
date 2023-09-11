@@ -13,11 +13,10 @@ import json
 from datetime import datetime
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
-from filterpy.kalman import KalmanFilter
 import functools
 
 PLOT_RANGE_IN_METER = 3
-RADAR_HEIGHT_IN_METER = 1.6
+RADAR_HEIGHT_IN_METER = 1.83
 
 
 def default_kwargs(**default_kwargs_decorator):
@@ -45,10 +44,6 @@ class Radar:
         self.xs = list()
         self.ys = list()
         self.zs = list()
-        self.tracking_list = list()
-        self.tracking_id = list()
-        self.accumulated = dict()
-        self.filter = KalmanFilter(dim_x=5, dim_z=3)
 
         # uart things variable
         port = self._read_com_port()
@@ -127,13 +122,6 @@ class Radar:
                         chirps_per_frame / num_tx)),
                 "MaxRange": (300 * 0.9 * sample_rate) / (2 * frequency_slope_const * 1e3),
                 "MaxVelocity": 3e8 / (4 * start_frequency * 1e9 * (idle_time + ramp_end_time) * 1e6 * num_tx)
-            }
-        )
-        self.accumulated.update(
-            {
-                "doppler": np.zeros(
-                    (self._config_parameter["DopplerBins"], self._config_parameter["RangeBins"]), dtype='float32'),
-                "azimuth": np.zeros((self._config_parameter["RangeBins"], 63), dtype='float32')
             }
         )
         pprint.pprint(self._config_parameter)
@@ -301,26 +289,28 @@ class Radar:
                                 # if target_id <= 0 or target_id > 250:
                                 #     # filter error value
                                 #     continue
-
-                                targets.append(target_id)
-                                posx.append(pos_x)
-                                posy.append(pos_y)
-                                posz.append(pos_z)
-                                # vel.append((vel_x**2 + vel_y**2 + vel_z**2)**0.5)
-                                vel.append([vel_x, vel_y, vel_z])
-                                acc.append(([acc_x, acc_y, acc_z]))
-                                tracking_object.update({
-                                    "target_id": targets,
-                                    "x": posx,
-                                    "y": posy,
-                                    "z": posz,
-                                    "v": vel,
-                                    "acc": acc
-                                })
+                                if 0 < target_id < 255:
+                                    targets.append(target_id)
+                                    posx.append(pos_x)
+                                    posy.append(pos_y)
+                                    posz.append(pos_z)
+                                    # vel.append((vel_x**2 + vel_y**2 + vel_z**2)**0.5)
+                                    vel.append([vel_x, vel_y, vel_z])
+                                    acc.append(([acc_x, acc_y, acc_z]))
                             except struct.error or ValueError:
                                 print("struct error")
                                 index = index_start + tlv_length
                                 break
+                            finally:
+                                tracking_object.update({
+                                        "target_id": targets,
+                                        "x": posx,
+                                        "y": posy,
+                                        "z": posz,
+                                        "v": vel,
+                                        "acc": acc
+                                    })
+                            
                     elif tlv_type == area_scanner_dynamic_points:
                         index_start = index
                         posx = list()
@@ -464,7 +454,11 @@ class Radar:
                 "CliPort": "/dev/ttyUSB0"
             }
 
-    def process_cluster(self, detected_object, thr=10, delay=10):
+    def tracker_in_box(self, point, bounding_box):
+
+        pass
+
+    def process_cluster(self, detected_object, group, thr=10, delay=10):
         points = detected_object["3d_scatter"]
         if self.args["remove_static_noise"]:
             self._remove_static(points)
@@ -485,7 +479,7 @@ class Radar:
             xs = list()
             ys = list()
             zs = list()
-            for i in range(2, 9):
+            for i in range(2, group):
                 try:
                     kmeans = KMeans(n_clusters=i, n_init='auto').fit(scatter_data)
                     scores.append(silhouette_score(scatter_data, kmeans.predict(scatter_data)))
@@ -553,13 +547,13 @@ class Radar:
                 ys.append((y1 + y2)/2)
                 zs.append((z1 + z2)/2)
             return color, [xs, ys, zs], bounding_boxes
-        # else:
         return 'r', [], []
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
+        print(tracker["target_id"])
         static = detected_object["static_object"]
-        color, groups, bounding_boxes = self.process_cluster(detected_object, 5, 10)
+        color, groups, bounding_boxes = self.process_cluster(detected_object, 5, 5, 20)
         self.ax.cla()
         if bounding_boxes:
             for box in bounding_boxes:
@@ -573,25 +567,27 @@ class Radar:
 
                     plt.plot(edge_x, edge_y, edge_z, c='g', marker=None, linestyle='-', linewidth=2)
 
-        # center_x = tracker["x"]
-        # center_y = tracker["y"]
-        # center_z = tracker["z"]
-        if len(groups) == 3:
-            center_x = groups[0]
-            center_y = groups[1]
-            center_z = groups[2]
+        center_x = tracker["x"]
+        center_y = tracker["y"]
+        center_z = tracker["z"]
+        # if len(groups) == 3:
+        #     center_x = groups[0]
+        #     center_y = groups[1]
+        #     center_z = groups[2]
         
-        else:
-            center_x = []
-            center_y = []
-            center_z = []
+        # else:
+        #     center_x = []
+        #     center_y = []
+        #     center_z = []
+
         # static_x = static["x"]
         # static_y = static["y"]
         # static_z = static["z"]
-        self.ax.scatter(self.xs, self.ys, self.zs, c=color, marker='o', label="Radar Data")
-        self.ax.scatter(center_x, center_y, center_z, s=8**2, c='r', marker='^', label="Center Points")
+        # print(len(self.xs))
+        # self.ax.scatter(self.xs, self.ys, self.zs, c=color, marker='o', label="Radar Data")
+        self.ax.scatter(center_x, center_y, center_z, s=8**2, c='g', marker='^', label="Center Points")
         # self.ax.scatter(static_x, static_y, static_z, c='b', marker='^', label="Static Points")
-
+        # print(diff_xyz)
         self.ax.set_xlabel('X(m)')
         self.ax.set_ylabel('range (m)')
         self.ax.set_zlabel('elevation (m)')
@@ -607,7 +603,7 @@ class Radar:
         xs = list(detected_object["x"])
         ys = list(detected_object["y"])
         zs = list(detected_object["z"])
-        static_index = [i for i in range(len(motion)) if motion[i] == 0]
+        static_index = [i for i in range(len(motion)) if motion[i] == 0 or np.isnan(motion[i])]
         for index in sorted(static_index, reverse=True):
             del motion[index]
             del xs[index]
@@ -633,6 +629,10 @@ class Radar:
 
 class NumpyArrayEncoder(json.JSONEncoder):
     def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
         if isinstance(obj, np.ndarray):
             return obj.tolist()
-        return json.JSONEncoder.default(self, obj)
+        return super(NumpyArrayEncoder, self).default(obj)
