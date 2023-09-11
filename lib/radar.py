@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 from sklearn.cluster import KMeans
+from scipy.cluster.hierarchy import linkage, fcluster
 from sklearn.metrics import silhouette_score
 import functools
 
@@ -458,7 +459,7 @@ class Radar:
 
         pass
 
-    def process_cluster(self, detected_object, group, thr=10, delay=10):
+    def process_cluster(self, detected_object, thr=10, delay=10):
         points = detected_object["3d_scatter"]
         if self.args["remove_static_noise"]:
             self._remove_static(points)
@@ -479,18 +480,21 @@ class Radar:
             xs = list()
             ys = list()
             zs = list()
-            for i in range(2, group):
-                try:
-                    kmeans = KMeans(n_clusters=i, n_init='auto').fit(scatter_data)
-                    scores.append(silhouette_score(scatter_data, kmeans.predict(scatter_data)))
-                except ValueError:
-                    break
-            if len(scores) == 0:
-                return 'r', [], []
-            selected_k = scores.index(max(scores)) + 2
+            Z = linkage(scatter_data, method="complete", metric="euclidean")
+            clusters = fcluster(Z, 1.5, criterion='distance')
+            # for i in range(2, group):
+            #     try:
+            #         kmeans = KMeans(n_clusters=i, n_init='auto').fit(scatter_data)
+            #         scores.append(silhouette_score(scatter_data, kmeans.predict(scatter_data)))
+            #     except ValueError:
+            #         break
+            # if len(scores) == 0:
+            #     return 'r', [], []
+            # selected_k = scores.index(max(scores)) + 2
 
-            kmeans = KMeans(n_clusters=selected_k, n_init='auto').fit(scatter_data)
-            color = list(kmeans.predict(scatter_data))
+            # kmeans = KMeans(n_clusters=selected_k, n_init='auto').fit(scatter_data)
+            # color = list(kmeans.predict(scatter_data))
+            color = list(clusters)
             labels = set(color)
             bounding_boxes = list()
             groups = list()
@@ -551,9 +555,8 @@ class Radar:
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
-        print(tracker["target_id"])
         static = detected_object["static_object"]
-        color, groups, bounding_boxes = self.process_cluster(detected_object, 5, 5, 20)
+        color, groups, bounding_boxes = self.process_cluster(detected_object, 15, 10)
         self.ax.cla()
         if bounding_boxes:
             for box in bounding_boxes:
@@ -584,7 +587,7 @@ class Radar:
         # static_y = static["y"]
         # static_z = static["z"]
         # print(len(self.xs))
-        # self.ax.scatter(self.xs, self.ys, self.zs, c=color, marker='o', label="Radar Data")
+        self.ax.scatter(self.xs, self.ys, self.zs, c=color, marker='o', label="Radar Data")
         self.ax.scatter(center_x, center_y, center_z, s=8**2, c='g', marker='^', label="Center Points")
         # self.ax.scatter(static_x, static_y, static_z, c='b', marker='^', label="Static Points")
         # print(diff_xyz)
