@@ -480,20 +480,11 @@ class Radar:
             xs = list()
             ys = list()
             zs = list()
-            Z = linkage(scatter_data, method="complete", metric="euclidean")
+            try:
+                Z = linkage(scatter_data, method="complete", metric="euclidean")
+            except:
+                return 'r', [], []
             clusters = fcluster(Z, 1.5, criterion='distance')
-            # for i in range(2, group):
-            #     try:
-            #         kmeans = KMeans(n_clusters=i, n_init='auto').fit(scatter_data)
-            #         scores.append(silhouette_score(scatter_data, kmeans.predict(scatter_data)))
-            #     except ValueError:
-            #         break
-            # if len(scores) == 0:
-            #     return 'r', [], []
-            # selected_k = scores.index(max(scores)) + 2
-
-            # kmeans = KMeans(n_clusters=selected_k, n_init='auto').fit(scatter_data)
-            # color = list(kmeans.predict(scatter_data))
             color = list(clusters)
             labels = set(color)
             bounding_boxes = list()
