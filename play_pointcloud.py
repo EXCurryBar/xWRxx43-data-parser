@@ -11,7 +11,7 @@ zs = list()
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 
-PLOT_RANGE_IN_CM = 500
+PLOT_RANGE_IN_CM = 5
 
 
 def plot_3d_scatter(detected_object):
@@ -22,10 +22,10 @@ def plot_3d_scatter(detected_object):
         zs = zs[length_list[0]:]
         length_list.pop(0)
     ax.cla()
-    length_list.append(detected_object["NumObj"])
-    xs += detected_object["x"]
-    ys += detected_object["y"]
-    zs += detected_object["z"]
+    length_list.append(len(detected_object["scatter"]["x"]))
+    xs += detected_object["scatter"]["x"]
+    ys += detected_object["scatter"]["y"]
+    zs += detected_object["scatter"]["z"]
     ax.scatter(xs, ys, zs, c='r', marker='o', label="Radar Data")
     ax.set_xlabel('azimuth (cm)')
     ax.set_ylabel('range (cm)')

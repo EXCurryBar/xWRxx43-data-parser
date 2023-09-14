@@ -45,7 +45,7 @@ class Radar:
         self.xs = list()
         self.ys = list()
         self.zs = list()
-
+        self.vs = list()
         # uart things variable
         port = self._read_com_port()
         self._cli = serial.Serial(port["CliPort"], cli_baud_rate)
@@ -58,9 +58,11 @@ class Radar:
         self.ax = self.fig.add_subplot(111, projection='3d')
         # logging things
         if self.args["write_file"]:
-            self._wrote_flag = True
+            self._wrote_flag_raw = True
+            self._wrote_flag_processed = True
             self._file_name = datetime.today().strftime("%Y-%m-%d-%H%M")
-            self._writer = open(f"./output_file/{self._file_name}.json", 'a', encoding="UTF-8")
+            self._writer = open(f"./raw_file/{self._file_name}.json", 'a', encoding="UTF-8")
+            self._processed_output = open(f"./output_file/{self._file_name}.json", 'a', encoding="UTF-8")
 
         self.max_buffer_size = 2 ** 15
         self.byte_buffer = np.zeros(self.max_buffer_size, dtype='uint8')
@@ -298,12 +300,8 @@ class Radar:
                                     # vel.append((vel_x**2 + vel_y**2 + vel_z**2)**0.5)
                                     vel.append([vel_x, vel_y, vel_z])
                                     acc.append(([acc_x, acc_y, acc_z]))
-                            except struct.error or ValueError:
-                                print("struct error")
-                                index = index_start + tlv_length
-                                break
-                            finally:
-                                tracking_object.update({
+
+                                    tracking_object.update({
                                         "target_id": targets,
                                         "x": posx,
                                         "y": posy,
@@ -311,6 +309,10 @@ class Radar:
                                         "v": vel,
                                         "acc": acc
                                     })
+                            except struct.error or ValueError:
+                                print("struct error")
+                                index = index_start + tlv_length
+                                break
                             
                     elif tlv_type == area_scanner_dynamic_points:
                         index_start = index
@@ -419,6 +421,7 @@ class Radar:
     def close_connection(self):
         if self.args["write_file"]:
             self._writer.write("]")
+            self._processed_output.write("]")
             self._writer.close()
         self._cli.write("sensorStop\n".encode())
         time.sleep(0.5)
@@ -455,9 +458,12 @@ class Radar:
                 "CliPort": "/dev/ttyUSB0"
             }
 
-    def tracker_in_box(self, point, bounding_box):
+    def find_motion_vector(self, bounding_box, ):
+        x1, y1, z1 = bounding_box[0][0]
+        x2, y2, z2 = bounding_box[-3][0]
 
-        pass
+        mv = [x2-x1, y2-y1]
+        print(mv)
 
     def process_cluster(self, detected_object, thr=10, delay=10):
         points = detected_object["3d_scatter"]
@@ -467,15 +473,16 @@ class Radar:
             self.xs = self.xs[self.length_list[0]:]
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
+            self.vs = self.vs[self.length_list[0]:]
             self.length_list.pop(0)
         self.length_list.append(len(points["x"]))
 
         self.xs += list(points["x"])
         self.ys += list(points["y"])
         self.zs += list(points["z"])
-
+        self.vs += list(points["v"])
         scores = list()
-        scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs)])
+        scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs, self.vs)])
         if len(self.xs) > thr:
             xs = list()
             ys = list()
@@ -496,6 +503,7 @@ class Radar:
                         del self.xs[index]
                         del self.ys[index]
                         del self.zs[index]
+                        del self.vs[index]
                         del color[index]
                     continue
                 x1 = -999
@@ -508,7 +516,7 @@ class Radar:
                 group = list()
                 for idx, value in enumerate(color):
                     if value == label:
-                        x, y, z = scatter_data[idx]
+                        x, y, z = scatter_data[idx][:3]
                         x1 = x if x > x1 else x1
                         y1 = y if y > y1 else y1
                         z1 = z if z > z1 else z1
@@ -517,7 +525,7 @@ class Radar:
                         y2 = y if y2 > y else y2
                         z2 = z if x2 > z else z2
                         
-                        group.append(scatter_data[idx])
+                        group.append(scatter_data[idx][:3])
                         # print(x1, y1, z1)
                         # print(x2, y2, z2)
                 groups.append(group)
@@ -541,16 +549,26 @@ class Radar:
                 xs.append((x1 + x2)/2)
                 ys.append((y1 + y2)/2)
                 zs.append((z1 + z2)/2)
+                data = {
+                    "scatter":points,
+                    "bounding_box":bounding_boxes,
+                    "label": color,
+                    "com": [xs, ys, zs]
+                }
+            self.write_processed_output(data)
             return color, [xs, ys, zs], bounding_boxes
         return 'r', [], []
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
         static = detected_object["static_object"]
-        color, groups, bounding_boxes = self.process_cluster(detected_object, 15, 10)
+        label, groups, bounding_boxes = self.process_cluster(detected_object, thr=10, delay=15)
         self.ax.cla()
         if bounding_boxes:
+            print("#################################")
             for box in bounding_boxes:
+                print("----------------------------")
+                self.find_motion_vector(box)
                 for line in box:
                     vertex1 = line[0]
                     vertex2 = line[1]
@@ -578,7 +596,7 @@ class Radar:
         # static_y = static["y"]
         # static_z = static["z"]
         # print(len(self.xs))
-        self.ax.scatter(self.xs, self.ys, self.zs, c=color, marker='o', label="Radar Data")
+        self.ax.scatter(self.xs, self.ys, self.zs, c=label, marker='o', label="Radar Data")
         self.ax.scatter(center_x, center_y, center_z, s=8**2, c='g', marker='^', label="Center Points")
         # self.ax.scatter(static_x, static_y, static_z, c='b', marker='^', label="Static Points")
         # print(diff_xyz)
@@ -612,11 +630,20 @@ class Radar:
             }
         )
 
+    def write_processed_output(self, radar_data:dict):
+        new_line = json.dumps(radar_data, cls=NumpyArrayEncoder)
+        if self._wrote_flag_processed:
+            self._processed_output.write(f"[[{time.time()}, {new_line}]")
+            self._wrote_flag_processed = False
+        else:
+            self._processed_output.write(f",\n[{time.time()}, {new_line}]")
+
+
     def write_to_json(self, radar_data: dict):
         new_line = json.dumps(radar_data, cls=NumpyArrayEncoder)
-        if self._wrote_flag:
+        if self._wrote_flag_raw:
             self._writer.write(f"[[{time.time()}, {new_line}]")
-            self._wrote_flag = False
+            self._wrote_flag_raw = False
         else:
             self._writer.write(f",\n[{time.time()}, {new_line}]")
 
