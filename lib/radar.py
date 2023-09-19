@@ -463,9 +463,10 @@ class Radar:
         x2, y2, z2 = bounding_box[-3][0]
 
         mv = [x2-x1, y2-y1]
-        print(mv)
+        # print(mv)
 
     def process_cluster(self, detected_object, thr=10, delay=10):
+        data = dict()
         points = detected_object["3d_scatter"]
         if self.args["remove_static_noise"]:
             self._remove_static(points)
@@ -481,22 +482,22 @@ class Radar:
         self.ys += list(points["y"])
         self.zs += list(points["z"])
         self.vs += list(points["v"])
-        scores = list()
         scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs, self.vs)])
         if len(self.xs) > thr:
-            xs = list()
-            ys = list()
-            zs = list()
             try:
                 Z = linkage(scatter_data, method="complete", metric="euclidean")
             except:
                 return 'r', [], []
-            clusters = fcluster(Z, 1.5, criterion='distance')
+            clusters = fcluster(Z, 1.6, criterion='distance')
             color = list(clusters)
             labels = set(color)
             bounding_boxes = list()
             groups = list()
             for label in labels:
+                xs = list()
+                ys = list()
+                zs = list()
+                vs = list()
                 if color.count(label) < thr:
                     outlier_index = [i for i in range(len(self.xs)) if color[i] == label]
                     for index in sorted(outlier_index, reverse=True):
@@ -506,6 +507,10 @@ class Radar:
                         del self.vs[index]
                         del color[index]
                     continue
+                xs.append([self.xs[i] for i in range(len(self.xs)) if color[i] == label])
+                ys.append([self.ys[i] for i in range(len(self.ys)) if color[i] == label])
+                zs.append([self.zs[i] for i in range(len(self.zs)) if color[i] == label])
+                vs.append([self.vs[i] for i in range(len(self.vs)) if color[i] == label])
                 x1 = -999
                 y1 = -999
                 z1 = -999
@@ -513,7 +518,7 @@ class Radar:
                 x2 = 999
                 y2 = 999
                 z2 = 999
-                group = list()
+                group = [xs, ys, zs, vs]
                 for idx, value in enumerate(color):
                     if value == label:
                         x, y, z = scatter_data[idx][:3]
@@ -546,17 +551,15 @@ class Radar:
                         [[x1, y2, z1], [x2, y2, z1]]
                     ]
                 )
-                xs.append((x1 + x2)/2)
-                ys.append((y1 + y2)/2)
-                zs.append((z1 + z2)/2)
-                data = {
+                data.update({
                     "scatter":points,
                     "bounding_box":bounding_boxes,
+                    "group": groups,
                     "label": color,
-                    "com": [xs, ys, zs]
-                }
-            self.write_processed_output(data)
-            return color, [xs, ys, zs], bounding_boxes
+                })
+            if self.args["write_file"]:
+                self.write_processed_output(data)
+            return color, groups, bounding_boxes
         return 'r', [], []
 
     def plot_3d_scatter(self, detected_object):
@@ -565,9 +568,9 @@ class Radar:
         label, groups, bounding_boxes = self.process_cluster(detected_object, thr=10, delay=15)
         self.ax.cla()
         if bounding_boxes:
-            print("#################################")
+            # print("#################################")
             for box in bounding_boxes:
-                print("----------------------------")
+                # print("----------------------------")
                 self.find_motion_vector(box)
                 for line in box:
                     vertex1 = line[0]
