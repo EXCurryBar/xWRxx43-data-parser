@@ -13,7 +13,6 @@ import json
 from datetime import datetime
 from sklearn.cluster import KMeans
 from scipy.cluster.hierarchy import linkage, fcluster
-from sklearn.metrics import silhouette_score
 import functools
 
 PLOT_RANGE_IN_METER = 3
@@ -530,7 +529,7 @@ class Radar:
                         y2 = y if y2 > y else y2
                         z2 = z if x2 > z else z2
                         
-                        group.append(scatter_data[idx][:3])
+                        group.append(scatter_data[idx])
                         # print(x1, y1, z1)
                         # print(x2, y2, z2)
                 groups.append(group)
