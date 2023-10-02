@@ -45,6 +45,9 @@ class Radar:
         self.ys = list()
         self.zs = list()
         self.vs = list()
+        self.rs = list()
+        self.angles = list()
+        self.elevs = list()
         # uart things variable
         port = self._read_com_port()
         self._cli = serial.Serial(port["CliPort"], cli_baud_rate)
@@ -146,7 +149,9 @@ class Radar:
             "y": [],
             "z": [],
             "v": [],
-            "acc": []
+            "r": [],
+            "angle": [],
+            "elev": []
         }
         tracking_object = {
             "target_id": [],
@@ -319,6 +324,9 @@ class Radar:
                         posy = list()
                         posz = list()
                         vel = list()
+                        rs = list()
+                        angles = list()
+                        elevs = list()
                         for _ in range(num_detected_object):
                             try:
                                 r = struct.unpack(
@@ -337,8 +345,10 @@ class Radar:
                                     '<f',
                                     codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
                                 index += 4
-
+                                rs.append(r)
+                                angles.append(angle)
                                 elev = np.pi/2 - elev
+                                elevs.append(elev)
                                 posx.append(r * np.sin(elev) * np.sin(angle))
                                 posy.append(r * np.sin(elev) * np.cos(angle))
                                 posz.append(r * np.cos(elev))
@@ -347,7 +357,10 @@ class Radar:
                                     "x": posx,
                                     "y": posy,
                                     "z": posz,
-                                    "v": vel
+                                    "v": vel,
+                                    "r": rs,
+                                    "angle": angles,
+                                    "elev": elevs
                                 })
                             except struct.error:
                                 print("struct error")
@@ -410,8 +423,7 @@ class Radar:
         radar_data = {
             "3d_scatter": detected_object,
             "tracking_object": tracking_object,
-            "static_object": static_object,
-            "range_profile": range_profile
+            "static_object": static_object
         }
         if self.args["write_file"] and magic_ok:
             self.write_to_json(radar_data)
@@ -474,6 +486,9 @@ class Radar:
             self.ys = self.ys[self.length_list[0]:]
             self.zs = self.zs[self.length_list[0]:]
             self.vs = self.vs[self.length_list[0]:]
+            self.rs = self.rs[self.length_list[0]:]
+            self.angles = self.angles[self.length_list[0]:]
+            self.elevs = self.elevs[self.length_list[0]:]
             self.length_list.pop(0)
         self.length_list.append(len(points["x"]))
 
@@ -481,7 +496,10 @@ class Radar:
         self.ys += list(points["y"])
         self.zs += list(points["z"])
         self.vs += list(points["v"])
-        scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs, self.vs)])
+        self.rs += list(points["r"])
+        self.angles += list(points["angle"])
+        self.elevs += list(points["elev"])
+        scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs, self.vs, self.rs, self.angles, self.elevs)])
         if len(self.xs) > thr:
             try:
                 Z = linkage(scatter_data, method="complete", metric="euclidean")
@@ -497,6 +515,9 @@ class Radar:
                 ys = list()
                 zs = list()
                 vs = list()
+                rs = list()
+                angles = list()
+                elevs = list()
                 if color.count(label) < thr:
                     outlier_index = [i for i in range(len(self.xs)) if color[i] == label]
                     for index in sorted(outlier_index, reverse=True):
@@ -504,12 +525,21 @@ class Radar:
                         del self.ys[index]
                         del self.zs[index]
                         del self.vs[index]
+                        del self.rs[index]
+                        del self.angles[index]
+                        del self.elevs[index]
                         del color[index]
                     continue
-                xs.append([self.xs[i] for i in range(len(self.xs)) if color[i] == label])
-                ys.append([self.ys[i] for i in range(len(self.ys)) if color[i] == label])
-                zs.append([self.zs[i] for i in range(len(self.zs)) if color[i] == label])
-                vs.append([self.vs[i] for i in range(len(self.vs)) if color[i] == label])
+
+                for i in range(len(self.xs)):
+                    if color[i] == label:
+                        xs.append(self.xs[i])
+                        ys.append(self.ys[i])
+                        zs.append(self.zs[i])
+                        vs.append(self.vs[i])
+                        rs.append(self.rs[i])
+                        angles.append(self.angles[i])
+                        elevs.append(self.elevs[i])
                 x1 = -999
                 y1 = -999
                 z1 = -999
@@ -617,18 +647,27 @@ class Radar:
         xs = list(detected_object["x"])
         ys = list(detected_object["y"])
         zs = list(detected_object["z"])
+        rs = list(detected_object["r"])
+        angles = list(detected_object["angle"])
+        elevs = list(detected_object["elev"])
         static_index = [i for i in range(len(motion)) if motion[i] == 0 or np.isnan(motion[i])]
         for index in sorted(static_index, reverse=True):
             del motion[index]
             del xs[index]
             del ys[index]
             del zs[index]
+            del rs[index]
+            del angles[index]
+            del elevs[index]
         detected_object.update(
             {
                 "v": motion,
                 "x": xs,
                 "y": ys,
-                "z": zs
+                "z": zs,
+                "r": rs,
+                "angle": angles,
+                "elev": elevs
             }
         )
 
