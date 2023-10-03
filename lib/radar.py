@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import json
 from datetime import datetime
 from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 from scipy.cluster.hierarchy import linkage, fcluster
 import functools
 
@@ -504,12 +505,14 @@ class Radar:
             try:
                 Z = linkage(scatter_data, method="complete", metric="euclidean")
             except:
-                return 'r', [], []
+                return 'r', [], [], []
             clusters = fcluster(Z, 1.6, criterion='distance')
             color = list(clusters)
             labels = set(color)
             bounding_boxes = list()
             groups = list()
+            new_groups = list()
+            eigenvectors = list()
             for label in labels:
                 xs = list()
                 ys = list()
@@ -547,7 +550,8 @@ class Radar:
                 x2 = 999
                 y2 = 999
                 z2 = 999
-                group = [xs, ys, zs, vs]
+                # group = [xs, ys, zs, vs]
+                group = list()
                 for idx, value in enumerate(color):
                     if value == label:
                         x, y, z = scatter_data[idx][:3]
@@ -559,10 +563,25 @@ class Radar:
                         y2 = y if y2 > y else y2
                         z2 = z if x2 > z else z2
                         
-                        group.append(scatter_data[idx])
+                        group.append(scatter_data[idx][:3])
                         # print(x1, y1, z1)
                         # print(x2, y2, z2)
                 groups.append(group)
+                pca = PCA(n_components=3)
+                for group in groups:
+                    new_group = pca.fit_transform(group)
+                    # n_samples = np.shape(new_group[0])
+                    new_group -= np.mean(new_group, axis=0)
+                    new_groups.append(new_group)
+                    # cov_matrix = np.dot(new_group.T, new_group) / n_samples
+                    length = list()
+                    vectors = pca.components_
+                    for eigenvector in vectors:
+                        x, y, z = eigenvector
+                        length.append(x ** 2 + y ** 2 + z ** 2)
+                    # print(vectors[length.index(max(length))])
+                    eigenvectors.append(vectors[length.index(max(length))])
+                    # print(np.dot(eigenvector.T, np.dot(cov_matrix, eigenvector)))
                 z2 = -RADAR_HEIGHT_IN_METER if z2 == 999 else z2
                 bounding_boxes.append(
                     [
@@ -581,20 +600,20 @@ class Radar:
                     ]
                 )
                 data.update({
-                    "scatter":points,
-                    "bounding_box":bounding_boxes,
-                    "group": groups,
+                    "scatter": points,
+                    "bounding_box": bounding_boxes,
+                    "group": new_groups,
                     "label": color,
                 })
             if self.args["write_file"]:
                 self.write_processed_output(data)
-            return color, groups, bounding_boxes
-        return 'r', [], []
+            return color, new_groups, bounding_boxes, eigenvectors
+        return 'r', [], [], []
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
         static = detected_object["static_object"]
-        label, groups, bounding_boxes = self.process_cluster(detected_object, thr=10, delay=15)
+        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=10, delay=15)
         self.ax.cla()
         if bounding_boxes:
             # print("#################################")
@@ -614,6 +633,7 @@ class Radar:
         center_x = tracker["x"]
         center_y = tracker["y"]
         center_z = tracker["z"]
+
         # if len(groups) == 3:
         #     center_x = groups[0]
         #     center_y = groups[1]
@@ -678,7 +698,6 @@ class Radar:
             self._wrote_flag_processed = False
         else:
             self._processed_output.write(f",\n[{time.time()}, {new_line}]")
-
 
     def write_to_json(self, radar_data: dict):
         new_line = json.dumps(radar_data, cls=NumpyArrayEncoder)

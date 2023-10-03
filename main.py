@@ -29,4 +29,3 @@ if __name__ == '__main__':
             print(f"\nShit code: {e}")
             print(traceback.print_exc())
             break
-
