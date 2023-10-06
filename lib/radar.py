@@ -500,13 +500,13 @@ class Radar:
         self.rs += list(points["r"])
         self.angles += list(points["angle"])
         self.elevs += list(points["elev"])
-        scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs, self.vs, self.rs, self.angles, self.elevs)])
+        scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs)])
         if len(self.xs) > thr:
             try:
                 Z = linkage(scatter_data, method="complete", metric="euclidean")
             except:
                 return 'r', [], [], []
-            clusters = fcluster(Z, 1.6, criterion='distance')
+            clusters = fcluster(Z, 2.0, criterion='distance')
             color = list(clusters)
             labels = set(color)
             bounding_boxes = list()
@@ -604,11 +604,22 @@ class Radar:
                     "bounding_box": bounding_boxes,
                     "group": new_groups,
                     "label": color,
+                    "vector": eigenvectors
                 })
+                self.project_on_plane(data)
             if self.args["write_file"]:
                 self.write_processed_output(data)
             return color, new_groups, bounding_boxes, eigenvectors
         return 'r', [], [], []
+
+    def project_on_plane(self, data):
+        vectors = data["vector"]
+        groups = data["group"]
+        z_vector = [0, 0, RADAR_HEIGHT_IN_METER]
+        for v, g in zip(vectors, groups):
+            normal_vector = np.cross(z_vector, v[:2])
+
+            print(normal_vector)
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
@@ -634,20 +645,6 @@ class Radar:
         center_y = tracker["y"]
         center_z = tracker["z"]
 
-        # if len(groups) == 3:
-        #     center_x = groups[0]
-        #     center_y = groups[1]
-        #     center_z = groups[2]
-        
-        # else:
-        #     center_x = []
-        #     center_y = []
-        #     center_z = []
-
-        # static_x = static["x"]
-        # static_y = static["y"]
-        # static_z = static["z"]
-        # print(len(self.xs))
         self.ax.scatter(self.xs, self.ys, self.zs, c=label, marker='o', label="Radar Data")
         self.ax.scatter(center_x, center_y, center_z, s=8**2, c='g', marker='^', label="Center Points")
         # self.ax.scatter(static_x, static_y, static_z, c='b', marker='^', label="Static Points")
