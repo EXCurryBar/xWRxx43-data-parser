@@ -470,13 +470,6 @@ class Radar:
                 "CliPort": "/dev/ttyUSB0"
             }
 
-    def find_motion_vector(self, bounding_box, ):
-        x1, y1, z1 = bounding_box[0][0]
-        x2, y2, z2 = bounding_box[-3][0]
-
-        mv = [x2-x1, y2-y1]
-        # print(mv)
-
     def process_cluster(self, detected_object, thr=10, delay=10):
         data = dict()
         points = detected_object["3d_scatter"]
@@ -615,11 +608,25 @@ class Radar:
     def project_on_plane(self, data):
         vectors = data["vector"]
         groups = data["group"]
+        projected_group = list()
         z_vector = [0, 0, RADAR_HEIGHT_IN_METER]
         for v, g in zip(vectors, groups):
+            new_group = list()
             normal_vector = np.cross(z_vector, v[:2])
+            for p in g:
+                product = (-normal_vector[0] * p[0] - normal_vector[1] * p[1]) / (
+                            normal_vector[0] ** 2 + normal_vector[1] ** 2)
+                x_hat = p[0] - normal_vector[0] * product
+                y_hat = p[1] - normal_vector[1] * product
+                new_group.append([x_hat, y_hat])
+            projected_group.append(new_group)
+        return projected_group
 
-            print(normal_vector)
+    def plot_group(self, detected_object):
+        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=10, delay=15)
+        self.ax.cla()
+        self.project_on_plane()
+        pass
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
@@ -627,10 +634,7 @@ class Radar:
         label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=10, delay=15)
         self.ax.cla()
         if bounding_boxes:
-            # print("#################################")
             for box in bounding_boxes:
-                # print("----------------------------")
-                self.find_motion_vector(box)
                 for line in box:
                     vertex1 = line[0]
                     vertex2 = line[1]
