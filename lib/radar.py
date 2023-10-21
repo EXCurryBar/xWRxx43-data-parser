@@ -26,7 +26,9 @@ def default_kwargs(**default_kwargs_decorator):
         def g(*args, **kwargs):
             default_kwargs_decorator.update(kwargs)
             return fn(*args, **default_kwargs_decorator)
+
         return g
+
     return actual_decorator
 
 
@@ -122,7 +124,7 @@ class Radar:
                 "RangeBins": int(adc_samples_next),
                 "RangeResolution": (3e8 * sample_rate * 1e3) / (2 * frequency_slope_const * 1e12 * adc_samples),
                 "RangeIndexToMeters": (3e8 * sample_rate * 1e3) / (
-                            2 * frequency_slope_const * 1e12 * int(adc_samples_next)),
+                        2 * frequency_slope_const * 1e12 * int(adc_samples_next)),
                 "DopplerResolution":
                     3e8 / (2 * start_frequency * 1e9 * (idle_time + ramp_end_time) * 1e6 * int(
                         chirps_per_frame / num_tx)),
@@ -258,40 +260,40 @@ class Radar:
                                 target_id = np.matmul(self.byte_buffer[index:index + 4], word)
                                 index += 4
                                 pos_x = struct.unpack(
-                                            '<f',
-                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
                                 index += 4
                                 pos_y = struct.unpack(
-                                            '<f',
-                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
                                 index += 4
                                 vel_x = struct.unpack(
-                                            '<f',
-                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
                                 index += 4
                                 vel_y = struct.unpack(
-                                            '<f',
-                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
                                 index += 4
                                 acc_x = struct.unpack(
-                                            '<f',
-                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
                                 index += 4
                                 acc_y = struct.unpack(
-                                            '<f',
-                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
                                 index += 4
                                 pos_z = struct.unpack(
-                                            '<f',
-                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
                                 index += 4
                                 vel_z = struct.unpack(
-                                            '<f',
-                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
                                 index += 4
                                 acc_z = struct.unpack(
-                                            '<f',
-                                            codecs.decode(binascii.hexlify(self.byte_buffer[index:index+4]), "hex"))[0]
+                                    '<f',
+                                    codecs.decode(binascii.hexlify(self.byte_buffer[index:index + 4]), "hex"))[0]
                                 index += 4
 
                                 # if target_id <= 0 or target_id > 250:
@@ -318,7 +320,7 @@ class Radar:
                                 print("struct error")
                                 index = index_start + tlv_length
                                 break
-                            
+
                     elif tlv_type == area_scanner_dynamic_points:
                         index_start = index
                         posx = list()
@@ -348,7 +350,7 @@ class Radar:
                                 index += 4
                                 rs.append(r)
                                 angles.append(angle)
-                                elev = np.pi/2 - elev
+                                elev = np.pi / 2 - elev
                                 elevs.append(elev)
                                 posx.append(r * np.sin(elev) * np.sin(angle))
                                 posy.append(r * np.sin(elev) * np.cos(angle))
@@ -555,7 +557,7 @@ class Radar:
                         x2 = x if x2 > x else x2
                         y2 = y if y2 > y else y2
                         z2 = z if x2 > z else z2
-                        
+
                         group.append(scatter_data[idx][:3])
                         # print(x1, y1, z1)
                         # print(x2, y2, z2)
@@ -571,7 +573,7 @@ class Radar:
                     vectors = pca.components_
                     for eigenvector in vectors:
                         x, y, z = eigenvector
-                        length.append(x ** 2 + y ** 2 + z ** 2)
+                        length.append(x ** 2 + y ** 2)
                     # print(vectors[length.index(max(length))])
                     eigenvectors.append(vectors[length.index(max(length))])
                     # print(np.dot(eigenvector.T, np.dot(cov_matrix, eigenvector)))
@@ -599,13 +601,15 @@ class Radar:
                     "label": color,
                     "vector": eigenvectors
                 })
-                self.project_on_plane(data)
+                new_groups = self.project_on_plane(data)
+                data["group"] = new_groups
             if self.args["write_file"]:
                 self.write_processed_output(data)
             return color, new_groups, bounding_boxes, eigenvectors
         return 'r', [], [], []
 
-    def project_on_plane(self, data):
+    @staticmethod
+    def project_on_plane(data):
         vectors = data["vector"]
         groups = data["group"]
         projected_group = list()
@@ -622,16 +626,16 @@ class Radar:
             projected_group.append(new_group)
         return projected_group
 
-    def plot_group(self, detected_object):
-        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=10, delay=15)
-        self.ax.cla()
-        self.project_on_plane()
-        pass
+    # def plot_group(self, detected_object):
+    #     label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=10, delay=15)
+    #     self.ax.cla()
+    #     self.project_on_plane()
+    #     pass
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
         static = detected_object["static_object"]
-        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=10, delay=15)
+        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=20, delay=15)
         self.ax.cla()
         if bounding_boxes:
             for box in bounding_boxes:
@@ -650,13 +654,13 @@ class Radar:
         center_z = tracker["z"]
 
         self.ax.scatter(self.xs, self.ys, self.zs, c=label, marker='o', label="Radar Data")
-        self.ax.scatter(center_x, center_y, center_z, s=8**2, c='g', marker='^', label="Center Points")
+        self.ax.scatter(center_x, center_y, center_z, s=8 ** 2, c='g', marker='^', label="Center Points")
         # self.ax.scatter(static_x, static_y, static_z, c='b', marker='^', label="Static Points")
         # print(diff_xyz)
         self.ax.set_xlabel('X(m)')
         self.ax.set_ylabel('range (m)')
         self.ax.set_zlabel('elevation (m)')
-        self.ax.set_xlim(-PLOT_RANGE_IN_METER/2, PLOT_RANGE_IN_METER/2)
+        self.ax.set_xlim(-PLOT_RANGE_IN_METER / 2, PLOT_RANGE_IN_METER / 2)
         self.ax.set_ylim(0, PLOT_RANGE_IN_METER)
         self.ax.set_zlim(-RADAR_HEIGHT_IN_METER, RADAR_HEIGHT_IN_METER)
         plt.draw()
@@ -692,7 +696,7 @@ class Radar:
             }
         )
 
-    def write_processed_output(self, radar_data:dict):
+    def write_processed_output(self, radar_data: dict):
         new_line = json.dumps(radar_data, cls=NumpyArrayEncoder)
         if self._wrote_flag_processed:
             self._processed_output.write(f"[[{time.time()}, {new_line}]")
