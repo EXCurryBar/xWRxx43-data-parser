@@ -5,7 +5,7 @@ import time
 import os
 import pprint
 
-data = json.load(open("output_file/2023-10-19-1541.json", 'r'))
+data = json.load(open("output_file/2023-11-01-1405.json", 'r'))
 
 for row in data:
     groups = row[1]["group"]
@@ -15,7 +15,7 @@ for row in data:
         x = xy[0]
         y = xy[1]
         plt.xlim((-2, 2))
-        plt.ylim((-2, 2))
+        plt.ylim((-1, 1))
         plt.scatter(x, y, marker='o', label="group")
 
     plt.draw()

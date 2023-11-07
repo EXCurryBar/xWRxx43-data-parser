@@ -93,7 +93,6 @@ class Radar:
         idle_time = 0
         ramp_end_time = 0
 
-        num_rx = 4
         num_tx = 3
         for line in self._config:
             split_word = line.split(' ')
@@ -113,8 +112,6 @@ class Radar:
                 chirp_start_index = int(split_word[1])
                 chirp_end_index = int(split_word[2])
                 loop_count = int(split_word[3])
-                frame_count = int(split_word[4])
-                frame_periodicity = int(float(split_word[5]))
 
         chirps_per_frame = (chirp_end_index - chirp_start_index + 1) * loop_count
 
@@ -137,12 +134,10 @@ class Radar:
     def parse_data(self):
         # header.version
         word = [1, 2 ** 8, 2 ** 16, 2 ** 24]
-        object_struct_size = 12
-        byte_vector_acc_max_size = 2 ** 15
         area_scanner_dynamic_points = 1
         area_scanner_static_points = 8
         area_scanner_track_object_list = 10
-        area_scanner_tracking_id = 11
+        # area_scanner_tracking_id = 11
         magic_word = [2, 1, 4, 3, 6, 5, 8, 7]
 
         magic_ok = 0
@@ -169,7 +164,6 @@ class Radar:
             "z": [],
             "v": []
         }
-        range_profile = list()
         radar_data = dict()
 
         # 讀資料
@@ -438,6 +432,7 @@ class Radar:
             self._processed_output.write("]")
             self._writer.close()
         self._cli.write("sensorStop\n".encode())
+        # self._cli.write("sensorStop\n".encode())
         time.sleep(0.5)
         self._cli.close()
         self._data.close()
@@ -498,10 +493,10 @@ class Radar:
         scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs)])
         if len(self.xs) > thr:
             try:
-                Z = linkage(scatter_data, method="complete", metric="euclidean")
+                z = linkage(scatter_data, method="complete", metric="euclidean")
             except:
                 return 'r', [], [], []
-            clusters = fcluster(Z, 2.0, criterion='distance')
+            clusters = fcluster(z, 2.0, criterion='distance')
             color = list(clusters)
             labels = set(color)
             bounding_boxes = list()
@@ -626,16 +621,16 @@ class Radar:
             projected_group.append(new_group)
         return projected_group
 
-    # def plot_group(self, detected_object):
-    #     label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=10, delay=15)
-    #     self.ax.cla()
-    #     self.project_on_plane()
-    #     pass
+    def plot_group(self, detected_object):
+        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=10, delay=15)
+        self.ax.cla()
+        self.project_on_plane()
+        pass
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
         static = detected_object["static_object"]
-        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=20, delay=15)
+        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=30, delay=15)
         self.ax.cla()
         if bounding_boxes:
             for box in bounding_boxes:
