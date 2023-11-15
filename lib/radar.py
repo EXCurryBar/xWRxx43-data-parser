@@ -558,6 +558,7 @@ class Radar:
                         # print(x2, y2, z2)
                 groups.append(group)
                 pca = PCA(n_components=3)
+                eigenvalues = list()
                 for group in groups:
                     new_group = pca.fit_transform(group)
                     # n_samples = np.shape(new_group[0])
@@ -566,10 +567,13 @@ class Radar:
                     # cov_matrix = np.dot(new_group.T, new_group) / n_samples
                     length = list()
                     vectors = pca.components_
+                    eigenvalue = list(pca.explained_variance_)
+                    eigenvalues.append(eigenvalue)
                     for eigenvector in vectors:
                         x, y, z = eigenvector
                         length.append(x ** 2 + y ** 2)
-                    # print(vectors[length.index(max(length))])
+                    # print(length.index(max(length)))
+                    # print(values.index(max(values)))
                     eigenvectors.append(vectors[length.index(max(length))])
                     # print(np.dot(eigenvector.T, np.dot(cov_matrix, eigenvector)))
                 z2 = -RADAR_HEIGHT_IN_METER if z2 == 999 else z2
@@ -594,10 +598,28 @@ class Radar:
                     "bounding_box": bounding_boxes,
                     "group": new_groups,
                     "label": color,
-                    "vector": eigenvectors
+                    "vector": eigenvectors,
+                    "eigenvalues": eigenvalues
                 })
                 new_groups = self.project_on_plane(data)
                 data["group"] = new_groups
+                thetas = list()
+                phis = list()
+                if len(eigenvalues) != 0:
+                    plt.cla()
+                    for value in eigenvalues:
+                        theta = np.arctan(np.sqrt(value[0] ** 2 + value[1] ** 2) / value[2])
+                        phi = np.arctan(value[1] / value[0])
+                        thetas.append(theta)
+                        phis.append(phi)
+                    plt.scatter(thetas, phis)
+                    plt.ylim((-1, 1))
+                    plt.xlim((-2, 2))
+                    plt.draw()
+                    plt.pause(1 / 10)
+                    print(thetas)
+                    thetas.clear()
+                    phis.clear()
             if self.args["write_file"]:
                 self.write_processed_output(data)
             return color, new_groups, bounding_boxes, eigenvectors
@@ -621,16 +643,10 @@ class Radar:
             projected_group.append(new_group)
         return projected_group
 
-    def plot_group(self, detected_object):
-        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=10, delay=15)
-        self.ax.cla()
-        self.project_on_plane()
-        pass
-
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
         static = detected_object["static_object"]
-        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=30, delay=15)
+        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=30, delay=30)
         self.ax.cla()
         if bounding_boxes:
             for box in bounding_boxes:
