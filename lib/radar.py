@@ -11,12 +11,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 from datetime import datetime
-from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from scipy.cluster.hierarchy import linkage, fcluster
 import functools
 
-PLOT_RANGE_IN_METER = 3
+PLOT_RANGE_IN_METER = 5
 RADAR_HEIGHT_IN_METER = 1.83
 
 
@@ -72,7 +71,6 @@ class Radar:
         self.max_buffer_size = 2 ** 15
         self.byte_buffer = np.zeros(self.max_buffer_size, dtype='uint8')
         self.byte_buffer_length = 0
-        self.kmeans = KMeans()
 
     def _send_config(self, config_file_name):
         self._config = open(f"./radar_config/{config_file_name}").readlines()
@@ -493,10 +491,10 @@ class Radar:
         scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs)])
         if len(self.xs) > thr:
             try:
-                z = linkage(scatter_data, method="complete", metric="euclidean")
+                z = linkage(scatter_data, method="single", metric="euclidean")
             except:
                 return 'r', [], [], []
-            clusters = fcluster(z, 2.0, criterion='distance')
+            clusters = fcluster(z, 1.0, criterion='distance')
             color = list(clusters)
             labels = set(color)
             bounding_boxes = list()
@@ -575,6 +573,7 @@ class Radar:
                     # print(length.index(max(length)))
                     # print(values.index(max(values)))
                     eigenvectors.append(vectors[length.index(max(length))])
+
                     # print(np.dot(eigenvector.T, np.dot(cov_matrix, eigenvector)))
                 z2 = -RADAR_HEIGHT_IN_METER if z2 == 999 else z2
                 bounding_boxes.append(
@@ -596,33 +595,16 @@ class Radar:
                 data.update({
                     "scatter": points,
                     "bounding_box": bounding_boxes,
-                    "group": new_groups,
+                    "group": groups,
                     "label": color,
                     "vector": eigenvectors,
                     "eigenvalues": eigenvalues
                 })
                 new_groups = self.project_on_plane(data)
                 data["group"] = new_groups
-                thetas = list()
-                phis = list()
-                if len(eigenvalues) != 0:
-                    plt.cla()
-                    for value in eigenvalues:
-                        theta = np.arctan(np.sqrt(value[0] ** 2 + value[1] ** 2) / value[2])
-                        phi = np.arctan(value[1] / value[0])
-                        thetas.append(theta)
-                        phis.append(phi)
-                    plt.scatter(thetas, phis)
-                    plt.ylim((-1, 1))
-                    plt.xlim((-2, 2))
-                    plt.draw()
-                    plt.pause(1 / 10)
-                    print(thetas)
-                    thetas.clear()
-                    phis.clear()
             if self.args["write_file"]:
                 self.write_processed_output(data)
-            return color, new_groups, bounding_boxes, eigenvectors
+            return color, groups, bounding_boxes, eigenvectors
         return 'r', [], [], []
 
     @staticmethod
@@ -636,17 +618,18 @@ class Radar:
             normal_vector = np.cross(z_vector, v[:2])
             for p in g:
                 product = (-normal_vector[0] * p[0] - normal_vector[1] * p[1]) / (
-                            normal_vector[0] ** 2 + normal_vector[1] ** 2)
+                        normal_vector[0] ** 2 + normal_vector[1] ** 2)
                 x_hat = p[0] - normal_vector[0] * product
                 y_hat = p[1] - normal_vector[1] * product
                 new_group.append([x_hat, y_hat])
             projected_group.append(new_group)
+            # print(projected_group)
         return projected_group
 
     def plot_3d_scatter(self, detected_object):
         tracker = detected_object["tracking_object"]
         static = detected_object["static_object"]
-        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=30, delay=30)
+        label, groups, bounding_boxes, eigenvector = self.process_cluster(detected_object, thr=20, delay=15)
         self.ax.cla()
         if bounding_boxes:
             for box in bounding_boxes:
@@ -675,7 +658,7 @@ class Radar:
         self.ax.set_ylim(0, PLOT_RANGE_IN_METER)
         self.ax.set_zlim(-RADAR_HEIGHT_IN_METER, RADAR_HEIGHT_IN_METER)
         plt.draw()
-        plt.pause(1 / 30)
+        plt.pause(1 / 100)
 
     @staticmethod
     def _remove_static(detected_object):

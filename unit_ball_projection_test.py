@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-data = json.load(open("output_file/2023-11-15-1533.json", 'r'))
+data = json.load(open("output_file/wei_lr1.json", 'r'))
 thetas = list()
 phis = list()
 
