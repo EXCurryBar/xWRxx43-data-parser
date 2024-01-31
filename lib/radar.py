@@ -491,10 +491,10 @@ class Radar:
         scatter_data = np.array([item for item in zip(self.xs, self.ys, self.zs)])
         if len(self.xs) > thr:
             try:
-                z = linkage(scatter_data, method="single", metric="euclidean")
+                z = linkage(scatter_data, method="ward", metric="euclidean")
             except:
                 return 'r', [], [], []
-            clusters = fcluster(z, 1.0, criterion='distance')
+            clusters = fcluster(z, 3.0, criterion='distance')
             color = list(clusters)
             labels = set(color)
             bounding_boxes = list()
@@ -569,7 +569,7 @@ class Radar:
                     eigenvalues.append(eigenvalue)
                     for eigenvector in vectors:
                         x, y, z = eigenvector
-                        length.append(x ** 2 + y ** 2)
+                        length.append(x ** 2 + y ** 2 + z**2)
                     # print(length.index(max(length)))
                     # print(values.index(max(values)))
                     eigenvectors.append(vectors[length.index(max(length))])
