@@ -10,7 +10,7 @@ DATA_BAUD = 921600
 if __name__ == '__main__':
     os.makedirs("./output_file", exist_ok=True)
     os.makedirs("./raw_file", exist_ok=True)
-    radar = Radar("area_scanner_68xx_ODS.cfg", CLI_BAUD, DATA_BAUD, remove_static_noise=False, write_file=False)
+    radar = Radar("area_scanner_68xx_ODS.cfg", CLI_BAUD, DATA_BAUD, remove_static_noise=False, write_file=True)
     while True:
         try:
             data_ok, frame_number, radar_data = radar.parse_data()

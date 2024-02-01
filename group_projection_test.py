@@ -1,6 +1,7 @@
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+
 # from scipy.stats import entropy
 
 
@@ -32,7 +33,7 @@ import numpy as np
 #     return pmf
 
 
-data = json.load(open("output_file/wei_forward.json", 'r'))
+data = json.load(open("output_file/wei_lr2.json", 'r'))
 entropy_list_x = list()
 entropy_list_y = list()
 delay = 15
@@ -56,33 +57,40 @@ for i in range(len(data)):
     y_0 = 0
     x_0 = 0
     for row in h:
-        if all(item <= 0.2 for item in row):
+        if all(item <= 10 for item in row):
             x_0 += 1
 
-    x_percentage = x_0 / bins
+    x_percentage = (bins - x_0) / bins
 
     for row in h.T:
-        if all(item <= 0.2 for item in row):
+        if all(item <= 10 for item in row):
             y_0 += 1
 
-    y_percentage = y_0 / bins
+    y_percentage = (bins - y_0) / bins
     # list_of_frames.append(h)
     list_of_x.append(x_percentage)
     list_of_y.append(y_percentage)
     list_of_entropy.append([x_percentage, y_percentage])
     # print(list_of_entropy)
-    list_of_atan.append(at := np.arctan(y_percentage / x_percentage))
-    if 44 < at*180/np.pi < 50:
+    try:
+        at = np.arctan(y_percentage / x_percentage)
+    except ZeroDivisionError:
+        at = 0
+    # print(y_percentage, x_percentage)
+    if np.pi < at*8 < 3*np.pi and y_percentage >= 0.3 and x_percentage >= 0.3:
         print("FALL")
+        plt.pause(0)
     # print(y_0, x_0)
     plt.figure(1)
     # plt.plot(list_of_atan, c='r')
     plt.pcolormesh(q_x, q_y, h.T)
+    ax = plt.gca()
+    ax.set_aspect('equal', adjustable='box')
     # plt.figure(2)
     # plt.scatter(list_of_x, list_of_y, c="r")
     # plt.xlim((0, 1))
     # plt.ylim((0, 1))
-    plt.pause(0)
+    plt.pause(1/10)
     # stacked_frames = stack_frames(list_of_frames)
     # entropy_map = calculate_entropy(stacked_frames)
     # plot_heatmap(entropy_map)
