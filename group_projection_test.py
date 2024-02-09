@@ -76,8 +76,9 @@ for i in range(len(data)):
         at = np.arctan(y_percentage / x_percentage)
     except ZeroDivisionError:
         at = 0
-    # print(y_percentage, x_percentage)
-    if np.pi < at*8 < 3*np.pi and y_percentage >= 0.3 and x_percentage >= 0.3:
+    if np.pi < at * 8 < 3 * np.pi and y_percentage >= 0.3 and x_percentage >= 0.3:
+        print(at * 180 / np.pi)
+        print(y_percentage, x_percentage)
         print("FALL")
         plt.pause(0)
     # print(y_0, x_0)
@@ -90,7 +91,7 @@ for i in range(len(data)):
     # plt.scatter(list_of_x, list_of_y, c="r")
     # plt.xlim((0, 1))
     # plt.ylim((0, 1))
-    plt.pause(1/10)
+    plt.pause(1 / 10)
     # stacked_frames = stack_frames(list_of_frames)
     # entropy_map = calculate_entropy(stacked_frames)
     # plot_heatmap(entropy_map)
