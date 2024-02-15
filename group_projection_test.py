@@ -2,37 +2,6 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
-# from scipy.stats import entropy
-
-
-# def stack_frames(frame):
-#     return np.dstack(frame)
-
-
-# def calculate_entropy(stacked_frames):
-#     entropy_map = np.apply_along_axis(lambda x: entropy(x, base=10), axis=2, arr=stacked_frames)
-#     return entropy_map
-
-
-# def mse(a, b):
-#     err = np.sum((a - b) ** 2)
-#     err /= bins ** 2
-#     return err
-
-
-# def plot_heatmap(entropy_map):
-#     plt.cla()
-#     plt.imshow(entropy_map, interpolation='nearest')
-#     plt.draw()
-
-
-# def calculate_pmf(x):
-#     total = len(x)
-#     set_x = list(set(x))
-#     pmf = [x.count(item) / total for item in set_x]
-#     return pmf
-
-
 data = json.load(open("output_file/wei_lr2.json", 'r'))
 entropy_list_x = list()
 entropy_list_y = list()
@@ -67,11 +36,9 @@ for i in range(len(data)):
             y_0 += 1
 
     y_percentage = (bins - y_0) / bins
-    # list_of_frames.append(h)
     list_of_x.append(x_percentage)
     list_of_y.append(y_percentage)
     list_of_entropy.append([x_percentage, y_percentage])
-    # print(list_of_entropy)
     try:
         at = np.arctan(y_percentage / x_percentage)
     except ZeroDivisionError:
@@ -81,18 +48,8 @@ for i in range(len(data)):
         print(y_percentage, x_percentage)
         print("FALL")
         plt.pause(0)
-    # print(y_0, x_0)
     plt.figure(1)
-    # plt.plot(list_of_atan, c='r')
     plt.pcolormesh(q_x, q_y, h.T)
     ax = plt.gca()
     ax.set_aspect('equal', adjustable='box')
-    # plt.figure(2)
-    # plt.scatter(list_of_x, list_of_y, c="r")
-    # plt.xlim((0, 1))
-    # plt.ylim((0, 1))
     plt.pause(1 / 10)
-    # stacked_frames = stack_frames(list_of_frames)
-    # entropy_map = calculate_entropy(stacked_frames)
-    # plot_heatmap(entropy_map)
-# plt.pause(0)
