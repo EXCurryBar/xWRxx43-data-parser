@@ -32,7 +32,7 @@ def default_kwargs(**default_kwargs_decorator):
 
 
 class Radar:
-    @default_kwargs(remove_static_noise=False, write_file=False)
+    @default_kwargs(remove_static_noise=False, write_file=False, file_name=None)
     def __init__(self, config_file_name, cli_baud_rate: int, data_baud_rate: int, **kwargs):
         """
         :param cli_baud_rate (int): baud rate of the control port
@@ -64,7 +64,10 @@ class Radar:
         if self.args["write_file"]:
             self._wrote_flag_raw = True
             self._wrote_flag_processed = True
-            self._file_name = datetime.today().strftime("%Y-%m-%d-%H%M")
+            if self.args["file_name"] is None:
+                self._file_name = datetime.today().strftime("%Y-%m-%d-%H%M")
+            else:
+                self._file_name = self.args["file_name"]
             self._writer = open(f"./raw_file/{self._file_name}.json", 'a', encoding="UTF-8")
             self._processed_output = open(f"./output_file/{self._file_name}.json", 'a', encoding="UTF-8")
 
