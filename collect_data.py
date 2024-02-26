@@ -37,7 +37,7 @@ def collect_data(se, name):
     radar.close_connection()
 
 
-if __name__ == '__main__':
+def main():
     subject = input("Enter subject name: ")
     for i in range(15):
         input("enter to start collecting data")
@@ -48,3 +48,7 @@ if __name__ == '__main__':
         stop_event.set()
         t1.join()
         stop_event.clear()
+
+
+if __name__ == '__main__':
+    main()
