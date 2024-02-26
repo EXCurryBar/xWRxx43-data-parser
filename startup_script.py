@@ -12,7 +12,7 @@ while True:
         print("Please enter valid option")
 if sys.platform == "linux":
     os.system("sudo chmod 666 /dev/ttyUSB0")
-    os.system("sudo chmod 666 /dev/ttyUSB1;")
+    os.system("sudo chmod 666 /dev/ttyUSB1")
 
 if choice == 1:
     from main import main
