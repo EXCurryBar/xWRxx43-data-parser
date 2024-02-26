@@ -1,11 +1,9 @@
-import threading
 import multiprocessing
 import time
 import os
 import traceback
 from lib.radar import Radar
 
-stop_event = threading.Event()
 ev = multiprocessing.Event()
 
 CLI_BAUD = 115200
@@ -44,7 +42,7 @@ def main():
     subject = input("Enter subject name: ")
     for i in range(15):
         input("enter to start collecting data")
-        t1 = threading.Thread(target=collect_data, args=(ev, f"{subject}_{i}",))
+        t1 = multiprocessing.Process(target=collect_data, args=(ev, f"{subject}_{i}",))
         t1.start()
         input("press enter to stop")
 
