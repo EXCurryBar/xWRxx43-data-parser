@@ -23,7 +23,6 @@ def collect_data(se, name):
         try:
             data_ok, frame_number, radar_data = radar.parse_data()
             if data_ok:
-                # radar.plot_3d_scatter(radar_data)
                 s = time.time()
                 radar.process_cluster(radar_data, thr=30, delay=15)
                 delay = time.time() - s
@@ -38,17 +37,22 @@ def collect_data(se, name):
     radar.close_connection()
 
 
+ACTION = 5
+SET = 3
+
+
 def main():
     subject = input("Enter subject name: ")
-    for i in range(15):
-        input("enter to start collecting data")
-        t1 = multiprocessing.Process(target=collect_data, args=(ev, f"{subject}_{i}",))
-        t1.start()
-        input("press enter to stop")
+    for i in range(ACTION):
+        action = input("enter to start collecting data")
+        for j in range(SET):
+            t1 = multiprocessing.Process(target=collect_data, args=(ev, f"{subject}_{i}_{j}",))
+            t1.start()
+            input("press enter to stop")
 
-        ev.set()
-        t1.join()
-        ev.clear()
+            ev.set()
+            t1.join()
+            ev.clear()
 
 
 if __name__ == '__main__':
