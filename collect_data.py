@@ -69,7 +69,8 @@ def collect_data(se, name):
 
 ACTION = ["light_fall_lr", "light_fall_rl", "light_fall_fw", "light_fall_bw", "heavy_fall_lr", "heavy_fall_rl",
           "heavy_fall_fw", "heavy_fall_bw", "walk_fall_lr", "walk_fall_rl", "walk_fall_fw", "walk_fall_bw",
-          "sit", "squat", "pick_thing", "walk_pass", "making_bed", "swing_hand"]
+          "sit", "squat", "pick_thing", "walk_pass_fw", "walk_pass_bw", "walk_pass_lr", "walk_pass_rl", "making_bed",
+          "swing", "step_still", "rotate_hand", "raise_hand"]
 SET = 3
 
 
