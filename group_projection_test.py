@@ -2,7 +2,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
-data = json.load(open("output_file/wei_lr2.json", 'r'))
+data = json.load(open("output_file/test1.json", 'r'))
 entropy_list_x = list()
 entropy_list_y = list()
 delay = 15
@@ -18,7 +18,7 @@ for i in range(len(data)):
     ys = list()
 
     # for _ in range(start_index, i):
-    for g in data[i][1]["group"]:
+    for g in data[i][1].get("group", []):
         group = np.array(g).T
         xs += list(group[0])
         ys += list(group[1])

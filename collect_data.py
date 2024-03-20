@@ -88,5 +88,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    collect_data(None, "test1")
     # beep()
