@@ -10,13 +10,13 @@ ev = multiprocessing.Event()
 
 CLI_BAUD = 115200
 DATA_BAUD = 921600
-p = pyaudio.PyAudio()
-volume = 0.5
-fs = 44100
-duration = 1.0
-f = 440.0
-samples = (np.sin(2 * np.pi * np.arange(fs * duration) * f / fs)).astype(np.float32)
-output_bytes = (volume * samples).tobytes()
+# p = pyaudio.PyAudio()
+# volume = 0.5
+# fs = 44100
+# duration = 1.0
+# f = 440.0
+# samples = (np.sin(2 * np.pi * np.arange(fs * duration) * f / fs)).astype(np.float32)
+# output_bytes = (volume * samples).tobytes()
 
 
 def initialize_radar(name=None):
@@ -27,19 +27,20 @@ def initialize_radar(name=None):
 
 
 def beep():
-    stream = p.open(format=pyaudio.paFloat32,
-                    channels=1,
-                    rate=fs,
-                    output=True)
+    # stream = p.open(format=pyaudio.paFloat32,
+    #                 channels=1,
+    #                 rate=fs,
+    #                 output=True)
     time.sleep(3)
-    stream.write(output_bytes)
+    file = "/home/lin/Downloads/123123.mp3"
+    os.system("mpg123 " + file)
+    # stream.write(output_bytes)
     # stream.stop_stream()
     # stream.close()
     time.sleep(5)
-    stream.write(output_bytes)
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
+    file = "/home/lin/Downloads/123123.mp3"
+    os.system("mpg123 " + file)
+    # p.terminate()
     return
 
 

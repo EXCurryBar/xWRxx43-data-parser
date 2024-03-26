@@ -2,4 +2,5 @@
 output_file
 raw_file
 lib/__pycache__
+.__pycache__
 .vscode
