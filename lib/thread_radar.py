@@ -13,6 +13,7 @@ import socket
 import select
 import json
 import functools
+from .utils import NumpyArrayEncoder
 
 PLOT_RANGE_IN_METER = 5
 RADAR_HEIGHT_IN_METER = 1.83
@@ -528,14 +529,3 @@ class RadarThread(threading.Thread):
             client.close()
         self.server_socket.close()
         self.radar.close_connection()
-
-
-class NumpyArrayEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return super(NumpyArrayEncoder, self).default(obj)
