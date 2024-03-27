@@ -38,8 +38,8 @@ for i in range(len(data)):
             y_0 += 1
 
     y_percentage = (bins - y_0) / bins
-    list_of_x.append(x_percentage)
-    list_of_y.append(y_percentage)
+    list_of_x.append(xs)
+    list_of_y.append(ys)
     list_of_entropy.append([x_percentage, y_percentage])
     try:
         at = np.arctan(y_percentage / x_percentage)
@@ -51,7 +51,8 @@ for i in range(len(data)):
         print("FALL")
         plt.pause(0)
     plt.figure(1)
-    plt.pcolormesh(q_x, q_y, h.T)
+    # plt.pcolormesh(q_x, q_y, h.T)
+    plt.scatter(list_of_x, list_of_y)
     ax = plt.gca()
     ax.set_aspect('equal', adjustable='box')
     plt.pause(1 / 10)

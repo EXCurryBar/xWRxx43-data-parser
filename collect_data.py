@@ -32,13 +32,12 @@ def beep():
     #                 rate=fs,
     #                 output=True)
     time.sleep(3)
-    file = "/home/lin/Downloads/123123.mp3"
+    file = "./res/beep.mp3"
     os.system("mpg123 " + file)
     # stream.write(output_bytes)
     # stream.stop_stream()
     # stream.close()
     time.sleep(5)
-    file = "/home/lin/Downloads/123123.mp3"
     os.system("mpg123 " + file)
     # p.terminate()
     return
@@ -90,5 +89,5 @@ def main():
 
 if __name__ == '__main__':
     # main()
-    collect_data(None, "test1")
-    # beep()
+    # collect_data(None, "test1")
+    beep()

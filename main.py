@@ -7,6 +7,7 @@ from serial import SerialException
 CLI_BAUD = 115200
 DATA_BAUD = 921600
 
+
 def main():
     os.makedirs("./output_file", exist_ok=True)
     os.makedirs("./raw_file", exist_ok=True)
